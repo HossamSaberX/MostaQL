@@ -225,9 +225,10 @@ def process_new_jobs(db: Session) -> int:
     Returns number of notifications sent
     """
     try:
-        # Find jobs from last 10 minutes that don't have any notifications yet
+        # Find jobs from last 2 minutes that don't have any notifications yet
+        # This ensures we only process jobs from THIS scrape run
         from datetime import timedelta
-        cutoff_time = datetime.utcnow() - timedelta(minutes=10)
+        cutoff_time = datetime.utcnow() - timedelta(minutes=2)
         
         # Get jobs without notifications
         new_jobs = db.query(Job).outerjoin(Notification).filter(
