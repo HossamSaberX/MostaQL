@@ -9,10 +9,20 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/mostaql.db"
 
     # Email providers
-    resend_api_key: str = ""
-    resend_from_email: str = "noreply@yourdomain.com"
+    email_provider: str = "gmail"  # Options: "gmail" or "brevo"
+    
+    # Gmail settings
     gmail_user: str = ""
     gmail_app_password: str = ""
+    
+    # Brevo settings
+    brevo_smtp_key: str = ""
+    brevo_smtp_login: str = ""
+    brevo_sender_email: str = ""  # Verified sender email (optional, defaults to login)
+    
+    # Legacy Resend settings (kept for backward compatibility)
+    resend_api_key: str = ""
+    resend_from_email: str = "noreply@yourdomain.com"
 
     # Application
     base_url: str = "http://localhost"

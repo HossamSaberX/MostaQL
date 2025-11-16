@@ -12,7 +12,7 @@ from backend.services.subscription_service import (
     SubscriptionService,
     SubscriptionError,
 )
-from backend.services.email_service_gmail import send_verification_email_gmail
+from backend.services.email import send_verification_email
 from backend.utils.limiter import limiter
 
 router = APIRouter()
@@ -41,7 +41,7 @@ async def subscribe(
 
     if result.send_verification and result.token:
         background_tasks.add_task(
-            send_verification_email_gmail,
+            send_verification_email,
             result.user.email,
             result.token,
         )

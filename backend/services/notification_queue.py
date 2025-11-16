@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 
 from backend.database import SessionLocal, Notification, User
-from backend.services.email_service_gmail import send_job_notifications_gmail
+from backend.services.email import send_job_notifications
 from backend.utils.logger import app_logger
 
 
@@ -63,7 +63,7 @@ class EmailTaskQueue:
                 continue
 
             try:
-                success = send_job_notifications_gmail(
+                success = send_job_notifications(
                     email=task.email,
                     category_name=task.category_name,
                     jobs=task.jobs,

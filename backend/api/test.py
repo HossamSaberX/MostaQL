@@ -3,6 +3,7 @@ Test endpoints for manual scraper triggering and debugging
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from pydantic import BaseModel, EmailStr
 from loguru import logger
 import requests
 from bs4 import BeautifulSoup
@@ -10,6 +11,13 @@ from bs4 import BeautifulSoup
 from backend.scheduler import run_scraper_job
 from backend.database import get_db, Category, Job
 from backend.services.scraper import quick_check_category, scrape_category_with_logging
+
+
+class TestEmailRequest(BaseModel):
+    email: EmailStr
+    subject: str
+    body: str
+    provider: str = "gmail"
 
 router = APIRouter()
 
@@ -296,6 +304,64 @@ async def test_poll_all(db: Session = Depends(get_db)):
         
     except Exception as e:
         logger.error(f"Poll all test failed: {e}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+
+@router.post("/test-send-email")
+async def test_send_email(request: TestEmailRequest, db: Session = Depends(get_db)):
+    """
+    Test endpoint to send an email with specified provider.
+    
+    Request body:
+        email: Recipient email address
+        subject: Email subject
+        body: Email body (HTML supported)
+        provider: Email provider to use ("gmail" or "brevo", default: "gmail")
+    """
+    try:
+        from backend.services.email.gmail import GmailEmailService
+        from backend.services.email.brevo import BrevoEmailService
+        
+        provider = request.provider.lower()
+        
+        # Get the specified provider service
+        if provider == "brevo":
+            service = BrevoEmailService()
+        elif provider == "gmail":
+            service = GmailEmailService()
+        else:
+            return {
+                "status": "error",
+                "message": f"Unknown provider '{provider}'. Use 'gmail' or 'brevo'"
+            }
+        
+        # Send test email using the service's internal _send_email method
+        success = service._send_email(
+            to_email=request.email,
+            subject=request.subject,
+            html_body=request.body
+        )
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"Test email sent successfully via {provider}",
+                "provider": provider,
+                "recipient": request.email,
+                "subject": request.subject
+            }
+        else:
+            return {
+                "status": "error",
+                "message": f"Failed to send email via {provider}. Check logs for details.",
+                "provider": provider
+            }
+            
+    except Exception as e:
+        logger.error(f"Test email send failed: {e}")
         return {
             "status": "error",
             "message": str(e)
