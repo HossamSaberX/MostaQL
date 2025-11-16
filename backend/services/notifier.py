@@ -279,12 +279,20 @@ def process_new_jobs(db: Session) -> int:
                 
                 try:
                     import asyncio
-                    success = asyncio.run(send_job_notifications(
-                        user.email,
-                        category.name if category else "مشاريع",
-                        user_jobs,
-                        user.token
-                    ))
+                    import concurrent.futures
+                    
+                    # Run async function in thread to avoid event loop conflict
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(
+                            asyncio.run,
+                            send_job_notifications(
+                                user.email,
+                                category.name if category else "مشاريع",
+                                user_jobs,
+                                user.token
+                            )
+                        )
+                        success = future.result(timeout=30)
                     
                     if success:
                         total_sent += 1
