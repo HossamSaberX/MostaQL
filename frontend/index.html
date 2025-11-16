@@ -1,55 +1,57 @@
 <!DOCTYPE html>
-<html dir="rtl" lang="ar">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>خدمة إشعارات مستقل</title>
+    <title>تنبيهات وظائف مستقل</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
-    <div class="container">
-        <h1>🔔 خدمة إشعارات مستقل</h1>
-        <p class="subtitle">احصل على إشعارات فورية بالمشاريع الجديدة في التخصصات التي تهمك</p>
-        
-        <div id="messageBox" class="message"></div>
-        
-        <form id="subscribeForm">
-            <div class="form-group">
-                <label for="email">البريد الإلكتروني</label>
-                <input 
-                    type="email" 
-                    id="email" 
-                    name="email" 
-                    placeholder="example@gmail.com" 
-                    required
-                    dir="ltr"
-                >
+    <div class="page-wrapper">
+        <div class="card">
+            <h1>تنبيهات وظائف مستقل</h1>
+            <p class="subtitle">اشترك للحصول على إشعارات فورية بالوظائف الجديدة</p>
+
+            <div id="successMessage" class="alert success">
+                تم إرسال رسالة التفعيل. يرجى التحقق من بريدك الإلكتروني.
             </div>
-            
-            <div class="form-group">
-                <label>اختر التخصصات (حتى 10 تخصصات)</label>
-                <div id="categoriesGrid" class="categories-grid">
-                    <!-- Categories will be loaded here -->
-                    <div style="text-align: center; color: #7f8c8d;">
-                        جاري تحميل التخصصات...
-                    </div>
+            <div id="errorMessage" class="alert error"></div>
+
+            <form id="subscribeForm" novalidate>
+                <div class="form-group">
+                    <label for="email">البريد الإلكتروني</label>
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        placeholder="name@example.com"
+                        required
+                        dir="ltr"
+                        autocomplete="email"
+                    >
+                    <p id="emailError" class="input-hint error-text">البريد الإلكتروني غير صالح</p>
                 </div>
-            </div>
-            
-            <button type="submit" class="btn" id="submitBtn">
-                اشترك الآن
-            </button>
-        </form>
-        
-        <div class="footer">
-            <p>ستصلك رسالة تأكيد على بريدك الإلكتروني</p>
-            <p style="margin-top: 10px;">
-                <small>خدمة مجانية لمستقلي منصة <a href="https://mostaql.com" target="_blank">مستقل</a></small>
-            </p>
+
+                <div class="form-group">
+                    <label for="categories">اختر التصنيفات</label>
+                    <div class="categories" id="categories">
+                        <div class="loading">جاري تحميل التصنيفات...</div>
+                    </div>
+                    <p class="input-hint helper-text">اختر التخصصات التي تهمك للحصول على التنبيهات</p>
+                    <p id="categoryError" class="input-hint error-text">يجب اختيار تصنيف واحد على الأقل</p>
+                </div>
+
+                <button type="submit" class="primary-btn" id="submitBtn">
+                    اشترك الآن
+                </button>
+            </form>
         </div>
     </div>
-    
-    <script src="assets/script.js"></script>
+
+    <script src="assets/script.js" defer></script>
 </body>
 </html>
 

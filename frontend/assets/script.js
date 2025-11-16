@@ -1,134 +1,123 @@
-// API Base URL - change in production
-// For local dev with Go Live extension, API runs on port 8000
-const API_BASE_URL = window.location.port === '5500' || window.location.port === '5501'
-    ? 'http://localhost:8000/api'  // Go Live extension port
-    : window.location.origin + '/api';  // Production with nginx
+const API_BASE_URL =
+  window.location.port === '5500' || window.location.port === '5501'
+    ? 'http://localhost:8000/api'
+    : `${window.location.origin}/api`;
 
-// Load categories on page load
+const categoriesContainer = document.getElementById('categories');
+const emailInput = document.getElementById('email');
+const successMessage = document.getElementById('successMessage');
+const errorMessage = document.getElementById('errorMessage');
+const emailError = document.getElementById('emailError');
+const categoryError = document.getElementById('categoryError');
+const submitBtn = document.getElementById('submitBtn');
+const form = document.getElementById('subscribeForm');
+
 document.addEventListener('DOMContentLoaded', () => {
-    loadCategories();
+  loadCategories();
 });
 
-// Fetch and display categories
 async function loadCategories() {
-    const grid = document.getElementById('categoriesGrid');
-    
-    try {
-        const response = await fetch(`${API_BASE_URL}/categories`);
-        
-        if (!response.ok) {
-            throw new Error('Failed to load categories');
-        }
-        
-        const categories = await response.json();
-        
-        if (categories.length === 0) {
-            grid.innerHTML = '<p style="text-align: center; color: #e74c3c;">لا توجد تخصصات متاحة حالياً</p>';
-            return;
-        }
-        
-        // Clear loading message
-        grid.innerHTML = '';
-        
-        // Create checkbox for each category
-        categories.forEach(category => {
-            const categoryItem = document.createElement('div');
-            categoryItem.className = 'category-item';
-            
-            categoryItem.innerHTML = `
-                <input 
-                    type="checkbox" 
-                    id="cat-${category.id}" 
-                    name="categories" 
-                    value="${category.id}"
-                >
-                <label for="cat-${category.id}">${category.name}</label>
-            `;
-            
-            grid.appendChild(categoryItem);
-        });
-        
-    } catch (error) {
-        console.error('Error loading categories:', error);
-        grid.innerHTML = '<p style="text-align: center; color: #e74c3c;">حدث خطأ في تحميل التخصصات. يرجى تحديث الصفحة.</p>';
+  try {
+    const response = await fetch(`${API_BASE_URL}/categories`);
+    if (!response.ok) throw new Error('Failed to load categories');
+
+    const categories = await response.json();
+    if (!categories.length) {
+      categoriesContainer.innerHTML = '<p class="loading">لا توجد تصنيفات متاحة حالياً.</p>';
+      return;
     }
+
+    categoriesContainer.innerHTML = '';
+    categories.forEach((category) => {
+      const wrapper = document.createElement('label');
+      wrapper.className = 'category-item';
+      wrapper.setAttribute('for', `cat-${category.id}`);
+
+      wrapper.innerHTML = `
+        <input type="checkbox" id="cat-${category.id}" value="${category.id}" name="categories">
+        <span class="category-label">${category.name}</span>
+      `;
+
+      categoriesContainer.appendChild(wrapper);
+    });
+  } catch (err) {
+    console.error(err);
+    categoriesContainer.innerHTML = '<p class="loading">تعذر تحميل التصنيفات. يرجى تحديث الصفحة.</p>';
+  }
 }
 
-// Show message
-function showMessage(message, type = 'success') {
-    const messageBox = document.getElementById('messageBox');
-    messageBox.textContent = message;
-    messageBox.className = `message ${type} show`;
-    
-    // Auto-hide after 5 seconds for success messages
-    if (type === 'success') {
-        setTimeout(() => {
-            messageBox.classList.remove('show');
-        }, 5000);
-    }
+function setAlert(element, message) {
+  if (!element) return;
+  if (message) {
+    element.textContent = message;
+    element.classList.add('show');
+  } else {
+    element.classList.remove('show');
+  }
 }
 
-// Handle form submission
-document.getElementById('subscribeForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const submitBtn = document.getElementById('submitBtn');
-    const email = document.getElementById('email').value;
-    
-    // Get selected categories
-    const selectedCategories = Array.from(
-        document.querySelectorAll('input[name="categories"]:checked')
-    ).map(checkbox => parseInt(checkbox.value));
-    
-    // Validation
-    if (selectedCategories.length === 0) {
-        showMessage('يرجى اختيار تخصص واحد على الأقل', 'error');
-        return;
+function toggleGlobalAlert(element, message) {
+  if (!element) return;
+  if (message) {
+    element.textContent = message;
+    element.classList.add('show');
+  } else {
+    element.classList.remove('show');
+  }
+}
+
+form.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  toggleGlobalAlert(successMessage, '');
+  toggleGlobalAlert(errorMessage, '');
+  setAlert(emailError, '');
+  setAlert(categoryError, '');
+
+  const selectedCategories = Array.from(
+    document.querySelectorAll('input[name="categories"]:checked')
+  ).map((checkbox) => Number(checkbox.value));
+
+  if (!emailInput.validity.valid) {
+    setAlert(emailError, 'يرجى إدخال بريد إلكتروني صالح');
+    return;
+  }
+
+  if (!selectedCategories.length) {
+    setAlert(categoryError, 'يجب اختيار تصنيف واحد على الأقل');
+    return;
+  }
+
+  if (selectedCategories.length > 10) {
+    setAlert(categoryError, 'يمكنك اختيار 10 تصنيفات كحد أقصى');
+    return;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'جاري الإرسال...';
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/subscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: emailInput.value.trim(),
+        category_ids: selectedCategories,
+      }),
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      toggleGlobalAlert(successMessage, data.message || 'تم الاشتراك بنجاح');
+      form.reset();
+    } else {
+      toggleGlobalAlert(errorMessage, data.detail || 'حدث خطأ أثناء الاشتراك');
     }
-    
-    if (selectedCategories.length > 10) {
-        showMessage('يمكنك اختيار 10 تخصصات كحد أقصى', 'error');
-        return;
-    }
-    
-    // Disable submit button
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span class="loading"></span> جاري الإرسال...';
-    
-    try {
-        const response = await fetch(`${API_BASE_URL}/subscribe`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                email: email,
-                category_ids: selectedCategories
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            showMessage(data.message + ' ✓', 'success');
-            
-            // Reset form after 2 seconds
-            setTimeout(() => {
-                document.getElementById('subscribeForm').reset();
-            }, 2000);
-        } else {
-            // Handle errors
-            const errorMessage = data.detail || 'حدث خطأ أثناء الاشتراك';
-            showMessage(errorMessage, 'error');
-        }
-        
-    } catch (error) {
-        console.error('Subscription error:', error);
-        showMessage('حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى.', 'error');
-    } finally {
-        // Re-enable submit button
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'اشترك الآن';
-    }
+  } catch (err) {
+    console.error(err);
+    toggleGlobalAlert(errorMessage, 'حدث خطأ في الاتصال. يرجى المحاولة لاحقاً.');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'اشترك الآن';
+  }
 });
 

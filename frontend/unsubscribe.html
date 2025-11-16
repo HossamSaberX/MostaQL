@@ -1,65 +1,55 @@
 <!DOCTYPE html>
-<html dir="rtl" lang="ar">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>إلغاء الاشتراك</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
-    <div class="container">
-        <div id="statusContent">
-            <!-- Content will be injected by JavaScript -->
-        </div>
-        
-        <div class="footer">
-            <p><a href="/">← العودة للصفحة الرئيسية</a></p>
+    <div class="page-wrapper status-wrapper">
+        <div class="card">
+            <div id="statusContent"></div>
+            <a class="helper-text" href="/">← العودة للصفحة الرئيسية</a>
         </div>
     </div>
     
     <script>
-        // Get status from URL query parameter
-        const urlParams = new URLSearchParams(window.location.search);
-        const status = urlParams.get('status');
+        const status = new URLSearchParams(window.location.search).get('status');
         const content = document.getElementById('statusContent');
         
         const statusMessages = {
             success: {
-                icon: '✓',
-                class: 'status-success',
-                title: 'تم إلغاء الاشتراك بنجاح',
-                message: 'تم إلغاء اشتراكك في خدمة الإشعارات. لن تصلك المزيد من الرسائل. نتمنى لك التوفيق!'
+                icon: '✅',
+                title: 'تم إلغاء الاشتراك',
+                message: 'لن تصلك إشعارات جديدة. يمكنك العودة والاشتراك مجدداً في أي وقت.'
             },
             already_unsubscribed: {
                 icon: 'ℹ️',
-                class: 'status-warning',
                 title: 'تم الإلغاء مسبقاً',
-                message: 'اشتراكك ملغي بالفعل. لن تصلك أي رسائل.'
+                message: 'لا يوجد اشتراك مفعّل لهذا البريد الإلكتروني.'
             },
             invalid: {
                 icon: '❌',
-                class: 'status-error',
                 title: 'رابط غير صالح',
-                message: 'عذراً، رابط إلغاء الاشتراك غير صحيح.'
+                message: 'يبدو أن رابط إلغاء الاشتراك غير صحيح.'
             },
             error: {
                 icon: '⚠️',
-                class: 'status-error',
                 title: 'حدث خطأ',
-                message: 'عذراً، حدث خطأ أثناء إلغاء الاشتراك. يرجى المحاولة مرة أخرى لاحقاً.'
+                message: 'تعذر تنفيذ الطلب حالياً. يرجى المحاولة لاحقاً.'
             }
         };
         
-        const statusData = statusMessages[status] || statusMessages.error;
+        const { icon, title, message } = statusMessages[status] || statusMessages.error;
         
         content.innerHTML = `
-            <div class="status-icon ${statusData.class}">
-                ${statusData.icon}
-            </div>
-            <h1>${statusData.title}</h1>
-            <p class="subtitle">${statusData.message}</p>
-            ${status === 'success' || status === 'already_unsubscribed' ? 
-                '<p class="subtitle" style="margin-top: 20px;">إذا غيرت رأيك، يمكنك الاشتراك مجدداً من الصفحة الرئيسية.</p>' : ''}
+            <div class="status-icon">${icon}</div>
+            <h2 class="status-title">${title}</h2>
+            <p class="status-message">${message}</p>
         `;
     </script>
 </body>
