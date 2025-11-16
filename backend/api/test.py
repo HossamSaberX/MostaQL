@@ -40,10 +40,10 @@ async def trigger_scraper():
 async def debug_scrape():
     """
     Debug endpoint to see what's actually being scraped
-    Shows first 5 project links found with their titles
+    Shows first 5 project rows found with their titles
     """
     try:
-        url = "https://mostaql.com/projects?category=3"
+        url = "https://mostaql.com/projects"
         
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -52,32 +52,40 @@ async def debug_scrape():
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Find all links
-        all_links = soup.find_all('a', href=True)
-        project_links = []
+        # Find tbody with projects
+        tbody = soup.find('tbody', attrs={'data-filter': 'collection'})
         
-        for link in all_links[:100]:  # Check first 100 links
-            href = link.get('href', '')
-            if '/project/' in href:
-                title = link.get_text(strip=True)
-                full_url = href if href.startswith('http') else f"https://mostaql.com{href}"
+        if not tbody:
+            return {
+                "status": "error",
+                "message": "No tbody with data-filter='collection' found"
+            }
+        
+        # Find project rows
+        project_rows = tbody.find_all('tr', class_='project-row')
+        samples = []
+        
+        for row in project_rows[:5]:
+            try:
+                title_link = row.find('h2').find('a') if row.find('h2') else None
                 
-                project_links.append({
-                    'href': href,
-                    'full_url': full_url,
-                    'title': title,
-                    'title_length': len(title),
-                    'has_title': bool(title)
-                })
-                
-                if len(project_links) >= 5:
-                    break
+                if title_link:
+                    title = title_link.get_text(strip=True)
+                    url = title_link.get('href', '')
+                    full_url = url if url.startswith('http') else f"https://mostaql.com{url}"
+                    
+                    samples.append({
+                        'title': title,
+                        'url': full_url,
+                        'title_length': len(title)
+                    })
+            except Exception as e:
+                continue
         
         return {
             "status": "success",
-            "total_links_on_page": len(all_links),
-            "project_links_found": len(project_links),
-            "samples": project_links
+            "total_project_rows": len(project_rows),
+            "samples": samples
         }
         
     except Exception as e:

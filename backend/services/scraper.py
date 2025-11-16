@@ -113,22 +113,45 @@ def scrape_category(category_id: int, category_url: str) -> List[Dict[str, str]]
         # Parse HTML
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Find all links that point to /project/
-        # Based on actual Mostaql HTML structure
-        all_links = soup.find_all('a', href=True)
+        # Find project rows in the table structure
+        # <tbody data-filter="collection"> contains all projects
+        tbody = soup.find('tbody', attrs={'data-filter': 'collection'})
         
-        logger.info(f"Found {len(all_links)} total links on page")
+        if not tbody:
+            logger.warning(f"No tbody with data-filter='collection' found on page")
+            return jobs
         
-        # Filter and parse project links
-        for link in all_links:
-            href = link.get('href', '')
-            # Only process project links
-            if '/project/' in href:
-                job_data = parse_job_listing(link)
-                if job_data:
-                    # Avoid duplicates in same scrape
-                    if not any(j['url'] == job_data['url'] for j in jobs):
-                        jobs.append(job_data)
+        # Find all project rows
+        project_rows = tbody.find_all('tr', class_='project-row')
+        logger.info(f"Found {len(project_rows)} project rows")
+        
+        # Parse each project row
+        for row in project_rows:
+            try:
+                # Title and URL are in <h2><a>
+                title_link = row.find('h2').find('a') if row.find('h2') else None
+                
+                if not title_link:
+                    continue
+                
+                title = title_link.get_text(strip=True)
+                url = title_link.get('href', '')
+                
+                if not title or not url:
+                    continue
+                
+                # Make URL absolute
+                if not url.startswith('http'):
+                    url = f"https://mostaql.com{url}"
+                
+                jobs.append({
+                    'title': title,
+                    'url': url
+                })
+                
+            except Exception as e:
+                logger.debug(f"Error parsing project row: {e}")
+                continue
         
         logger.info(f"Successfully parsed {len(jobs)} jobs from category {category_id}")
         return jobs
