@@ -6,7 +6,6 @@ from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
 import random
 import time
-import hashlib
 from loguru import logger
 from datetime import datetime
 
@@ -85,6 +84,55 @@ def parse_job_listing(link_element) -> Optional[Dict[str, str]]:
         return None
 
 
+def quick_check_category(category_id: int, category_url: str, check_count: int = 5) -> Optional[str]:
+    """
+    Quick check: Only scrape first N items to see if anything changed.
+    Returns the URL of the first job if found, None if no jobs or error.
+    This is much faster than full scrape.
+    """
+    try:
+        headers = get_headers()
+        response = requests.get(
+            category_url,
+            headers=headers,
+            timeout=10,
+            allow_redirects=True
+        )
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        tbody = soup.find('tbody', attrs={'data-filter': 'collection'})
+        
+        if not tbody:
+            return None
+        
+        project_rows = tbody.find_all('tr', class_='project-row', limit=check_count)
+        
+        if not project_rows:
+            return None
+        
+        # Get first job URL
+        first_row = project_rows[0]
+        title_link = first_row.find('h2').find('a') if first_row.find('h2') else None
+        
+        if not title_link:
+            return None
+        
+        url = title_link.get('href', '')
+        if not url:
+            return None
+        
+        # Make URL absolute
+        if not url.startswith('http'):
+            url = f"https://mostaql.com{url}"
+        
+        return url
+        
+    except Exception as e:
+        logger.debug(f"Quick check failed for category {category_id}: {e}")
+        return None
+
+
 def scrape_category(category_id: int, category_url: str) -> List[Dict[str, str]]:
     """
     Scrape jobs from a category URL
@@ -93,11 +141,6 @@ def scrape_category(category_id: int, category_url: str) -> List[Dict[str, str]]
     jobs = []
     
     try:
-        # Random delay before request (2-5 seconds)
-        delay = random.uniform(2, 5)
-        logger.info(f"Waiting {delay:.2f}s before scraping category {category_id}")
-        time.sleep(delay)
-        
         # Make request with timeout
         headers = get_headers()
         logger.info(f"Scraping {category_url}")
@@ -118,7 +161,7 @@ def scrape_category(category_id: int, category_url: str) -> List[Dict[str, str]]
         tbody = soup.find('tbody', attrs={'data-filter': 'collection'})
         
         if not tbody:
-            logger.warning(f"No tbody with data-filter='collection' found on page")
+            logger.warning("No tbody with data-filter='collection' found on page")
             return jobs
         
         # Find all project rows
@@ -260,6 +303,47 @@ def update_category_scrape_status(category_id: int, success: bool):
         db.close()
 
 
+def poll_category(category_id: int) -> List[Job]:
+    """
+    Polling function: Quick check first, then full scrape if needed.
+    Returns list of new Job objects
+    """
+    db = SessionLocal()
+    
+    try:
+        # Get category
+        category = db.query(Category).filter(Category.id == category_id).first()
+        if not category:
+            logger.error(f"Category {category_id} not found")
+            return []
+        
+        # Quick check: get first job URL
+        first_job_url = quick_check_category(category_id, category.mostaql_url, check_count=5)
+        
+        if not first_job_url:
+            # No jobs found, skip
+            logger.debug(f"No jobs found in quick check for category {category.name}")
+            return []
+        
+        # Check if first job already exists in DB
+        existing_job = db.query(Job).filter(Job.url == first_job_url).first()
+        
+        if existing_job:
+            # First job hasn't changed, skip full scrape
+            logger.debug(f"Category {category.name}: First job unchanged, skipping full scrape")
+            return []
+        
+        # First job is new, do full scrape
+        logger.info(f"Category {category.name}: New job detected, doing full scrape")
+        return scrape_category_with_logging(category_id)
+        
+    except Exception as e:
+        logger.error(f"Error polling category {category_id}: {e}")
+        return []
+    finally:
+        db.close()
+
+
 def scrape_category_with_logging(category_id: int) -> List[Job]:
     """
     Main scraper function with full logging and error handling
@@ -275,7 +359,7 @@ def scrape_category_with_logging(category_id: int) -> List[Job]:
             logger.error(f"Category {category_id} not found")
             return []
         
-        logger.info(f"Starting scrape for category: {category.name}")
+        logger.info(f"Starting full scrape for category: {category.name}")
         
         # Scrape jobs
         jobs_data = scrape_category(category_id, category.mostaql_url)

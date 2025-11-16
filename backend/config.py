@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     environment: str = "development"
 
     # Scraper
-    scraper_interval_minutes: int = 30
+    scraper_interval_minutes: int = 30  # Legacy: kept for backward compatibility
+    scraper_poll_interval_minutes: int = 2  # Polling interval (quick checks)
     max_categories_per_user: int = 10
 
     # Rate limiting

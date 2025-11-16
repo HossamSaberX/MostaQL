@@ -6,18 +6,19 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.utils.logger import app_logger
 from backend.database import SessionLocal, Category
-from backend.services.scraper import scrape_category_with_logging
+from backend.services.scraper import poll_category
 from backend.services.notifier import process_new_jobs
 from backend.config import settings
 
 
 def run_scraper_job():
     """
-    Run scraper and process new jobs
+    Run polling scraper and process new jobs
+    Uses quick checks first, then full scrape only if needed
     This function runs in a separate thread
     """
     try:
-        app_logger.info("🔍 Starting scheduled scraper run...")
+        app_logger.info("🔍 Starting polling run...")
         
         db = SessionLocal()
         try:
@@ -26,23 +27,28 @@ def run_scraper_job():
             db.close()
 
         total_new_jobs = 0
+        skipped_count = 0
+        
         for category_id in category_ids:
             try:
-                new_jobs = scrape_category_with_logging(category_id)
+                # Poll: quick check first, full scrape only if needed
+                new_jobs = poll_category(category_id)
+                
                 if not new_jobs:
+                    skipped_count += 1
                     continue
 
                 total_new_jobs += len(new_jobs)
                 process_new_jobs(new_jobs, category_id)
             except Exception as category_error:
                 app_logger.error(
-                    f"Error scraping or notifying for category {category_id}: {category_error}"
+                    f"Error polling or notifying for category {category_id}: {category_error}"
                 )
         
         if total_new_jobs == 0:
-            app_logger.info("No new jobs found in this run")
+            app_logger.info(f"No new jobs found (skipped {skipped_count} categories)")
         else:
-            app_logger.info(f"✓ Scrape run finished with {total_new_jobs} new jobs")
+            app_logger.info(f"✓ Polling run finished: {total_new_jobs} new jobs from {len(category_ids) - skipped_count} categories")
             
     except Exception as e:
         app_logger.error(f"Error in scraper job: {e}")
@@ -50,24 +56,25 @@ def run_scraper_job():
 
 def start_scheduler():
     """
-    Start the background scheduler
+    Start the background scheduler with polling
     """
-    interval_minutes = settings.scraper_interval_minutes
+    # Use polling interval (default 2 minutes) instead of legacy interval
+    interval_minutes = getattr(settings, 'scraper_poll_interval_minutes', 2)
     
     scheduler = BackgroundScheduler()
     
-    # Add scraper job with interval from env
+    # Add scraper job with polling interval
     scheduler.add_job(
         func=run_scraper_job,
         trigger=IntervalTrigger(minutes=interval_minutes),
         id="scraper_job",
-        name="Scrape Mostaql jobs",
+        name="Poll Mostaql jobs",
         replace_existing=True
     )
     
     scheduler.start()
     
-    app_logger.info(f"✓ Scheduler started (interval: {interval_minutes} minutes)")
+    app_logger.info(f"✓ Polling scheduler started (interval: {interval_minutes} minutes)")
     
     return scheduler
 
