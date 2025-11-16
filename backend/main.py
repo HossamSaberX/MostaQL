@@ -18,7 +18,7 @@ load_dotenv()
 from backend.database import init_db
 from backend.utils.logger import app_logger
 from backend.scheduler import start_scheduler, shutdown_scheduler
-from backend.api import subscribe, verify, health
+from backend.api import subscribe, verify, health, test
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -86,6 +86,7 @@ app.add_middleware(
 app.include_router(subscribe.router, prefix="/api", tags=["subscribe"])
 app.include_router(verify.router, prefix="/api", tags=["verify"])
 app.include_router(health.router, prefix="/api", tags=["health"])
+app.include_router(test.router, prefix="/api/test", tags=["testing"])
 
 # Mount static files (frontend)
 frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
