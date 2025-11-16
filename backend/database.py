@@ -168,10 +168,15 @@ def init_db():
         # Check if categories already exist
         existing_categories = db.query(Category).count()
         if existing_categories == 0:
-            # For MVP: Just scrape main projects page (all categories)
-            # Category filtering can be added later
+            # Mostaql category URLs using slugs
             initial_categories = [
-                Category(name="جميع المشاريع", mostaql_url="https://mostaql.com/projects"),
+                Category(name="برمجة، تطوير المواقع والتطبيقات", mostaql_url="https://mostaql.com/projects?category=development&sort=latest"),
+                Category(name="تصميم، فيديو وصوتيات", mostaql_url="https://mostaql.com/projects?category=design&sort=latest"),
+                Category(name="كتابة، تحرير، ترجمة ولغات", mostaql_url="https://mostaql.com/projects?category=writing-translation&sort=latest"),
+                Category(name="تسويق إلكتروني ومبيعات", mostaql_url="https://mostaql.com/projects?category=marketing&sort=latest"),
+                Category(name="أعمال وخدمات استشارية", mostaql_url="https://mostaql.com/projects?category=business&sort=latest"),
+                Category(name="هندسة، عمارة وتصميم داخلي", mostaql_url="https://mostaql.com/projects?category=engineering-architecture&sort=latest"),
+                Category(name="تدريب وتعليم عن بعد", mostaql_url="https://mostaql.com/projects?category=training&sort=latest"),
             ]
             db.add_all(initial_categories)
             db.commit()
