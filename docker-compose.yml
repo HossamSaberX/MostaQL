@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: mostaql-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro  # For SSL certificates
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - mostaql-network
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: mostaql-api
+    environment:
+      - DATABASE_URL=sqlite:///./data/mostaql.db
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL}
+      - BASE_URL=${BASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - SCRAPER_INTERVAL_MINUTES=${SCRAPER_INTERVAL_MINUTES:-30}
+      - MAX_CATEGORIES_PER_USER=${MAX_CATEGORIES_PER_USER:-10}
+      - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-5}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - mostaql-network
+
+networks:
+  mostaql-network:
+    driver: bridge
+
+volumes:
+  data:
+    driver: local
+  logs:
+    driver: local
+
