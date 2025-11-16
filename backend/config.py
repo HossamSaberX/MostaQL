@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Scraper
     scraper_interval_minutes: int = 30  # Legacy: kept for backward compatibility
     scraper_poll_interval_minutes: int = 2  # Polling interval (quick checks)
+    scraper_quick_check_count: int = 5  # Number of jobs to check in quick_check (first N jobs)
+    mostaql_base_url: str = "https://mostaql.com"  # Base URL for Mostaql (for scraping)
+    http_request_timeout: int = 10  # HTTP request timeout in seconds
     max_categories_per_user: int = 10
 
     # Rate limiting
@@ -39,6 +42,14 @@ class Settings(BaseSettings):
 
     # Logging
     log_level: str = "INFO"
+    log_rotation_size: str = "50 MB"  # Log file rotation size
+    log_retention_days: int = 7  # Log file retention in days
+
+    # Email/SMTP
+    smtp_timeout: int = 30  # SMTP connection timeout in seconds
+
+    # API Server
+    api_port: int = 8000  # API server port
 
     # Token expiry
     verification_token_expiry_hours: int = 24

@@ -11,6 +11,7 @@ from datetime import datetime
 
 from backend.database import SessionLocal, Job, Category, ScraperLog
 from backend.utils.security import hash_content
+from backend.config import settings
 
 
 # User agent rotation list
@@ -84,18 +85,21 @@ def parse_job_listing(link_element) -> Optional[Dict[str, str]]:
         return None
 
 
-def quick_check_category(category_id: int, category_url: str, check_count: int = 5) -> Optional[str]:
+def quick_check_category(category_id: int, category_url: str, check_count: Optional[int] = None) -> Optional[str]:
     """
     Quick check: Only scrape first N items to see if anything changed.
     Returns the URL of the first job if found, None if no jobs or error.
     This is much faster than full scrape.
     """
+    if check_count is None:
+        check_count = settings.scraper_quick_check_count
+    
     try:
         headers = get_headers()
         response = requests.get(
             category_url,
             headers=headers,
-            timeout=10,
+            timeout=settings.http_request_timeout,
             allow_redirects=True
         )
         response.raise_for_status()
@@ -124,7 +128,7 @@ def quick_check_category(category_id: int, category_url: str, check_count: int =
         
         # Make URL absolute
         if not url.startswith('http'):
-            url = f"https://mostaql.com{url}"
+            url = f"{settings.mostaql_base_url}{url}"
         
         return url
         
@@ -148,7 +152,7 @@ def scrape_category(category_id: int, category_url: str) -> List[Dict[str, str]]
         response = requests.get(
             category_url,
             headers=headers,
-            timeout=10,
+            timeout=settings.http_request_timeout,
             allow_redirects=True
         )
         response.raise_for_status()
@@ -317,8 +321,8 @@ def poll_category(category_id: int) -> List[Job]:
             logger.error(f"Category {category_id} not found")
             return []
         
-        # Quick check: get first job URL
-        first_job_url = quick_check_category(category_id, category.mostaql_url, check_count=5)
+        # Quick check: get first job URL (uses config default)
+        first_job_url = quick_check_category(category_id, category.mostaql_url)
         
         if not first_job_url:
             # No jobs found, skip

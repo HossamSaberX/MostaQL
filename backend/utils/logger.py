@@ -26,8 +26,8 @@ def setup_logger():
     # Single file handler
     logger.add(
         "logs/app.log",
-        rotation="50 MB",
-        retention="7 days",
+        rotation=settings.log_rotation_size,
+        retention=f"{settings.log_retention_days} days",
         level=log_level,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
         enqueue=True  # Thread-safe

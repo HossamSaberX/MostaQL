@@ -172,14 +172,16 @@ def init_db():
         existing_categories = db.query(Category).count()
         if existing_categories == 0:
             # Mostaql category URLs using slugs
+            from backend.config import settings
+            base_url = settings.mostaql_base_url
             initial_categories = [
-                Category(name="برمجة، تطوير المواقع والتطبيقات", mostaql_url="https://mostaql.com/projects?category=development&sort=latest"),
-                Category(name="تصميم، فيديو وصوتيات", mostaql_url="https://mostaql.com/projects?category=design&sort=latest"),
-                Category(name="كتابة، تحرير، ترجمة ولغات", mostaql_url="https://mostaql.com/projects?category=writing-translation&sort=latest"),
-                Category(name="تسويق إلكتروني ومبيعات", mostaql_url="https://mostaql.com/projects?category=marketing&sort=latest"),
-                Category(name="أعمال وخدمات استشارية", mostaql_url="https://mostaql.com/projects?category=business&sort=latest"),
-                Category(name="هندسة، عمارة وتصميم داخلي", mostaql_url="https://mostaql.com/projects?category=engineering-architecture&sort=latest"),
-                Category(name="تدريب وتعليم عن بعد", mostaql_url="https://mostaql.com/projects?category=training&sort=latest"),
+                Category(name="برمجة، تطوير المواقع والتطبيقات", mostaql_url=f"{base_url}/projects?category=development&sort=latest"),
+                Category(name="تصميم، فيديو وصوتيات", mostaql_url=f"{base_url}/projects?category=design&sort=latest"),
+                Category(name="كتابة، تحرير، ترجمة ولغات", mostaql_url=f"{base_url}/projects?category=writing-translation&sort=latest"),
+                Category(name="تسويق إلكتروني ومبيعات", mostaql_url=f"{base_url}/projects?category=marketing&sort=latest"),
+                Category(name="أعمال وخدمات استشارية", mostaql_url=f"{base_url}/projects?category=business&sort=latest"),
+                Category(name="هندسة، عمارة وتصميم داخلي", mostaql_url=f"{base_url}/projects?category=engineering-architecture&sort=latest"),
+                Category(name="تدريب وتعليم عن بعد", mostaql_url=f"{base_url}/projects?category=training&sort=latest"),
             ]
             db.add_all(initial_categories)
             db.commit()

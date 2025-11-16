@@ -10,6 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from email.utils import formataddr
 from typing import List, Dict
 from loguru import logger
+from backend.config import settings
 
 
 class EmailService(ABC):
@@ -110,7 +111,7 @@ class SMTPEmailService(EmailService):
             msg.attach(html_part)
             
             logger.info("Creating SMTP connection...")
-            server = smtplib.SMTP(host, port, timeout=30)
+            server = smtplib.SMTP(host, port, timeout=settings.smtp_timeout)
             try:
                 logger.info("Starting TLS...")
                 server.starttls()

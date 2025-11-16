@@ -54,13 +54,14 @@ async def debug_scrape():
     Shows first 5 project rows found with their titles
     """
     try:
-        url = "https://mostaql.com/projects"
+        from backend.config import settings
+        url = f"{settings.mostaql_base_url}/projects"
         
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=settings.http_request_timeout)
         soup = BeautifulSoup(response.content, 'html.parser')
         
         # Find tbody with projects
@@ -83,7 +84,7 @@ async def debug_scrape():
                 if title_link:
                     title = title_link.get_text(strip=True)
                     url = title_link.get('href', '')
-                    full_url = url if url.startswith('http') else f"https://mostaql.com{url}"
+                    full_url = url if url.startswith('http') else f"{settings.mostaql_base_url}{url}"
                     
                     samples.append({
                         'title': title,
@@ -120,8 +121,8 @@ async def test_quick_check(category_id: int, db: Session = Depends(get_db)):
                 "message": f"Category {category_id} not found"
             }
         
-        # Run quick check
-        first_job_url = quick_check_category(category_id, category.mostaql_url, check_count=5)
+        # Run quick check (uses config default)
+        first_job_url = quick_check_category(category_id, category.mostaql_url)
         
         if not first_job_url:
             return {
@@ -168,8 +169,8 @@ async def test_poll_category(category_id: int, db: Session = Depends(get_db)):
                 "message": f"Category {category_id} not found"
             }
         
-        # Run quick check first
-        first_job_url = quick_check_category(category_id, category.mostaql_url, check_count=5)
+        # Run quick check first (uses config default)
+        first_job_url = quick_check_category(category_id, category.mostaql_url)
         
         if not first_job_url:
             return {
@@ -249,8 +250,8 @@ async def test_poll_all(db: Session = Depends(get_db)):
         
         for category in categories:
             try:
-                # Quick check
-                first_job_url = quick_check_category(category.id, category.mostaql_url, check_count=5)
+                # Quick check (uses config default)
+                first_job_url = quick_check_category(category.id, category.mostaql_url)
                 
                 if not first_job_url:
                     results.append({
