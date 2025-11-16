@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إلغاء الاشتراك</title>
+    <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div id="statusContent">
+            <!-- Content will be injected by JavaScript -->
+        </div>
+        
+        <div class="footer">
+            <p><a href="/">← العودة للصفحة الرئيسية</a></p>
+        </div>
+    </div>
+    
+    <script>
+        // Get status from URL query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const status = urlParams.get('status');
+        const content = document.getElementById('statusContent');
+        
+        const statusMessages = {
+            success: {
+                icon: '✓',
+                class: 'status-success',
+                title: 'تم إلغاء الاشتراك بنجاح',
+                message: 'تم إلغاء اشتراكك في خدمة الإشعارات. لن تصلك المزيد من الرسائل. نتمنى لك التوفيق!'
+            },
+            already_unsubscribed: {
+                icon: 'ℹ️',
+                class: 'status-warning',
+                title: 'تم الإلغاء مسبقاً',
+                message: 'اشتراكك ملغي بالفعل. لن تصلك أي رسائل.'
+            },
+            invalid: {
+                icon: '❌',
+                class: 'status-error',
+                title: 'رابط غير صالح',
+                message: 'عذراً، رابط إلغاء الاشتراك غير صحيح.'
+            },
+            error: {
+                icon: '⚠️',
+                class: 'status-error',
+                title: 'حدث خطأ',
+                message: 'عذراً، حدث خطأ أثناء إلغاء الاشتراك. يرجى المحاولة مرة أخرى لاحقاً.'
+            }
+        };
+        
+        const statusData = statusMessages[status] || statusMessages.error;
+        
+        content.innerHTML = `
+            <div class="status-icon ${statusData.class}">
+                ${statusData.icon}
+            </div>
+            <h1>${statusData.title}</h1>
+            <p class="subtitle">${statusData.message}</p>
+            ${status === 'success' || status === 'already_unsubscribed' ? 
+                '<p class="subtitle" style="margin-top: 20px;">إذا غيرت رأيك، يمكنك الاشتراك مجدداً من الصفحة الرئيسية.</p>' : ''}
+        `;
+    </script>
+</body>
+</html>
+

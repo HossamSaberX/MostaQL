@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تأكيد البريد الإلكتروني</title>
+    <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div id="statusContent">
+            <!-- Content will be injected by JavaScript -->
+        </div>
+        
+        <div class="footer">
+            <p><a href="/">← العودة للصفحة الرئيسية</a></p>
+        </div>
+    </div>
+    
+    <script>
+        // Get status from URL query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const status = urlParams.get('status');
+        const content = document.getElementById('statusContent');
+        
+        const statusMessages = {
+            success: {
+                icon: '✅',
+                class: 'status-success',
+                title: 'تم التأكيد بنجاح!',
+                message: 'شكراً لك! تم تأكيد بريدك الإلكتروني بنجاح. ستبدأ في تلقي إشعارات المشاريع الجديدة قريباً.'
+            },
+            already_verified: {
+                icon: '✓',
+                class: 'status-success',
+                title: 'البريد مؤكد مسبقاً',
+                message: 'بريدك الإلكتروني مؤكد بالفعل. لا حاجة لإجراء أي شيء.'
+            },
+            expired: {
+                icon: '⏰',
+                class: 'status-warning',
+                title: 'انتهت صلاحية الرابط',
+                message: 'عذراً، انتهت صلاحية رابط التأكيد (24 ساعة). يرجى الاشتراك مرة أخرى للحصول على رابط جديد.'
+            },
+            invalid: {
+                icon: '❌',
+                class: 'status-error',
+                title: 'رابط غير صالح',
+                message: 'عذراً، رابط التأكيد غير صحيح أو تم استخدامه بالفعل.'
+            },
+            error: {
+                icon: '⚠️',
+                class: 'status-error',
+                title: 'حدث خطأ',
+                message: 'عذراً، حدث خطأ أثناء التأكيد. يرجى المحاولة مرة أخرى لاحقاً.'
+            }
+        };
+        
+        const statusData = statusMessages[status] || statusMessages.error;
+        
+        content.innerHTML = `
+            <div class="status-icon ${statusData.class}">
+                ${statusData.icon}
+            </div>
+            <h1>${statusData.title}</h1>
+            <p class="subtitle">${statusData.message}</p>
+        `;
+    </script>
+</body>
+</html>
+

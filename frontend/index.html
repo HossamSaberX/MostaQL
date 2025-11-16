@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>خدمة إشعارات مستقل</title>
+    <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 خدمة إشعارات مستقل</h1>
+        <p class="subtitle">احصل على إشعارات فورية بالمشاريع الجديدة في التخصصات التي تهمك</p>
+        
+        <div id="messageBox" class="message"></div>
+        
+        <form id="subscribeForm">
+            <div class="form-group">
+                <label for="email">البريد الإلكتروني</label>
+                <input 
+                    type="email" 
+                    id="email" 
+                    name="email" 
+                    placeholder="example@gmail.com" 
+                    required
+                    dir="ltr"
+                >
+            </div>
+            
+            <div class="form-group">
+                <label>اختر التخصصات (حتى 10 تخصصات)</label>
+                <div id="categoriesGrid" class="categories-grid">
+                    <!-- Categories will be loaded here -->
+                    <div style="text-align: center; color: #7f8c8d;">
+                        جاري تحميل التخصصات...
+                    </div>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn" id="submitBtn">
+                اشترك الآن
+            </button>
+        </form>
+        
+        <div class="footer">
+            <p>ستصلك رسالة تأكيد على بريدك الإلكتروني</p>
+            <p style="margin-top: 10px;">
+                <small>خدمة مجانية لمستقلي منصة <a href="https://mostaql.com" target="_blank">مستقل</a></small>
+            </p>
+        </div>
+    </div>
+    
+    <script src="assets/script.js"></script>
+</body>
+</html>
+
