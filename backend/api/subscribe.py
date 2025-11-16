@@ -9,7 +9,7 @@ from loguru import logger
 
 from backend.database import get_db, User, Category, UserCategory
 from backend.models import SubscribeRequest, SubscribeResponse
-from backend.utils.security import generate_token, validate_email
+from backend.utils.security import generate_token
 # Using Gmail SMTP - FREE, works without custom domain, 500 emails/day!
 from backend.services.email_service_gmail import send_verification_email_gmail as send_verification_email
 
@@ -31,9 +31,7 @@ async def subscribe(
     Rate limit: 5 requests per hour per IP
     """
     try:
-        # Validate email format
-        if not validate_email(data.email):
-            raise HTTPException(status_code=400, detail="Invalid email format")
+        # Email already validated by Pydantic EmailStr
         
         # Check if categories exist
         categories = db.query(Category).filter(Category.id.in_(data.category_ids)).all()
