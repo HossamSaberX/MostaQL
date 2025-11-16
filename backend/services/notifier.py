@@ -218,21 +218,91 @@ async def send_pending_notifications() -> Dict[str, int]:
         db.close()
 
 
-async def process_new_jobs(new_jobs: List[Job], category_id: int):
+def process_new_jobs(db: Session) -> int:
     """
-    Complete workflow: queue notifications and send them
-    Called after scraper finds new jobs
+    Find recent jobs without notifications and process them
+    Called by scheduler after scraping
+    Returns number of notifications sent
     """
-    if not new_jobs:
-        return
-    
-    logger.info(f"Processing {len(new_jobs)} new jobs for category {category_id}")
-    
-    # Queue notifications
-    queue_job_notifications(new_jobs, category_id)
-    
-    # Send immediately
-    stats = await send_pending_notifications()
-    
-    logger.info(f"Processed notifications: {stats}")
+    try:
+        # Find jobs from last 10 minutes that don't have any notifications yet
+        from datetime import timedelta
+        cutoff_time = datetime.utcnow() - timedelta(minutes=10)
+        
+        # Get jobs without notifications
+        new_jobs = db.query(Job).outerjoin(Notification).filter(
+            Job.scraped_at >= cutoff_time,
+            Notification.id == None
+        ).all()
+        
+        if not new_jobs:
+            logger.info("No new jobs to process")
+            return 0
+        
+        logger.info(f"Processing {len(new_jobs)} new jobs")
+        
+        total_sent = 0
+        # Group by category and process
+        jobs_by_category = {}
+        for job in new_jobs:
+            if job.category_id not in jobs_by_category:
+                jobs_by_category[job.category_id] = []
+            jobs_by_category[job.category_id].append(job)
+        
+        # Process each category
+        for category_id, category_jobs in jobs_by_category.items():
+            # Get users interested in this category
+            users = get_users_for_category(category_id, db)
+            
+            if not users:
+                logger.info(f"No users subscribed to category {category_id}")
+                continue
+            
+            # Create notifications and send
+            for job in category_jobs:
+                for user in users:
+                    # Create notification record
+                    notification = Notification(
+                        user_id=user.id,
+                        job_id=job.id,
+                        status="pending"
+                    )
+                    db.add(notification)
+            
+            db.commit()
+            
+            # Send emails to users
+            for user in users:
+                user_jobs = [{'title': j.title, 'url': j.url} for j in category_jobs]
+                category = db.query(Category).get(category_id)
+                
+                try:
+                    import asyncio
+                    success = asyncio.run(send_job_notifications(
+                        user.email,
+                        category.name if category else "مشاريع",
+                        user_jobs,
+                        user.token
+                    ))
+                    
+                    if success:
+                        total_sent += 1
+                        # Update notifications as sent
+                        db.query(Notification).filter(
+                            Notification.user_id == user.id,
+                            Notification.job_id.in_([j.id for j in category_jobs]),
+                            Notification.status == "pending"
+                        ).update({"status": "sent", "sent_at": datetime.utcnow()})
+                        db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"Failed to send notification to {user.email}: {e}")
+        
+        logger.info(f"Sent {total_sent} notifications")
+        return total_sent
+        
+    except Exception as e:
+        logger.error(f"Error processing new jobs: {e}")
+        db.rollback()
+        return 0
 
