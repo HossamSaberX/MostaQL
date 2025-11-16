@@ -15,7 +15,7 @@ def setup_logger():
     # Get log level from environment
     log_level = os.getenv("LOG_LEVEL", "INFO")
     
-    # Console handler with colored output for development
+    # Console handler with colored output
     logger.add(
         sys.stderr,
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
@@ -23,35 +23,14 @@ def setup_logger():
         colorize=True
     )
     
-    # File handler for all logs
+    # Single file handler
     logger.add(
         "logs/app.log",
-        rotation="100 MB",
-        retention="30 days",
+        rotation="50 MB",
+        retention="7 days",
         level=log_level,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
         enqueue=True  # Thread-safe
-    )
-    
-    # Separate file for errors only
-    logger.add(
-        "logs/errors.log",
-        rotation="50 MB",
-        retention="90 days",
-        level="ERROR",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-        enqueue=True
-    )
-    
-    # Scraper-specific logs
-    logger.add(
-        "logs/scraper.log",
-        rotation="50 MB",
-        retention="30 days",
-        level=log_level,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
-        filter=lambda record: "scraper" in record["extra"].get("context", ""),
-        enqueue=True
     )
     
     logger.info("Logger initialized")

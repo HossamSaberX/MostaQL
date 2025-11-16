@@ -122,13 +122,10 @@ class ScraperLog(Base):
 # Database connection setup
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/mostaql.db")
 
-# Enable WAL mode for SQLite
+# Create engine
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
 )
 
 

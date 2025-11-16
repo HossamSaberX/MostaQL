@@ -2,16 +2,16 @@
 Email service using Gmail SMTP (no domain required!)
 Limitation: 500 emails/day, requires App Password
 """
+import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import List, Dict
 from loguru import logger
-from backend.config import settings
 
 # Gmail SMTP Configuration
-GMAIL_USER = settings.gmail_user
-GMAIL_PASSWORD = settings.gmail_app_password
+GMAIL_USER = os.getenv("GMAIL_USER", "")
+GMAIL_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587  # STARTTLS
 
@@ -71,10 +71,9 @@ def send_email_gmail(to_email: str, subject: str, html_body: str) -> bool:
 
 async def send_verification_email_gmail(email: str, token: str) -> bool:
     """Send verification email via Gmail"""
-    from backend.config import settings
-    
     try:
-        verify_url = f"{settings.base_url}/api/verify/{token}"
+        base_url = os.getenv("BASE_URL", "http://localhost:8000")
+        verify_url = f"{base_url}/api/verify/{token}"
         html_content = VERIFICATION_TEMPLATE.format(verify_url=verify_url)
         
         return send_email_gmail(
@@ -90,8 +89,6 @@ async def send_verification_email_gmail(email: str, token: str) -> bool:
 
 async def send_job_notifications_gmail(email: str, category_name: str, jobs: List[Dict[str, str]], unsubscribe_token: str) -> bool:
     """Send job notification email via Gmail"""
-    from backend.config import settings
-    
     try:
         if not jobs:
             return False
@@ -101,7 +98,8 @@ async def send_job_notifications_gmail(email: str, category_name: str, jobs: Lis
             for job in jobs
         ])
         
-        unsubscribe_url = f"{settings.base_url}/api/unsubscribe/{unsubscribe_token}"
+        base_url = os.getenv("BASE_URL", "http://localhost:8000")
+        unsubscribe_url = f"{base_url}/api/unsubscribe/{unsubscribe_token}"
         
         html_content = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">

@@ -22,10 +22,3 @@ def is_token_expired(created_at: datetime, expiry_hours: int = 24) -> bool:
     expiry_time = created_at + timedelta(hours=expiry_hours)
     return datetime.utcnow() > expiry_time
 
-
-def validate_email(email: str) -> bool:
-    """Basic email validation"""
-    import re
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
-
