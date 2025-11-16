@@ -4,8 +4,6 @@ Security utilities for token generation and validation
 import secrets
 import hashlib
 from datetime import datetime, timedelta
-from typing import Optional
-
 
 def generate_token(length: int = 32) -> str:
     """Generate a secure random token"""
@@ -17,8 +15,8 @@ def hash_content(content: str) -> str:
     return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
 
-def is_token_expired(created_at: datetime, expiry_hours: int = 24) -> bool:
+def is_token_expired(issued_at: datetime, expiry_hours: int = 24) -> bool:
     """Check if a token has expired"""
-    expiry_time = created_at + timedelta(hours=expiry_hours)
+    expiry_time = issued_at + timedelta(hours=expiry_hours)
     return datetime.utcnow() > expiry_time
 

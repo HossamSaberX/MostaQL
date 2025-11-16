@@ -2,26 +2,21 @@
 FastAPI application entry point
 """
 import os
-from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
-
-# Load .env file
-load_dotenv()
 
 from backend.database import init_db
 from backend.utils.logger import app_logger
 from backend.scheduler import start_scheduler, shutdown_scheduler
 from backend.api import subscribe, verify, health, test
-
-# Initialize rate limiter
-limiter = Limiter(key_func=get_remote_address)
+from backend.utils.limiter import limiter
+from backend.services.notification_queue import email_task_queue
+from backend.config import settings
 
 # Global scheduler reference
 scheduler = None
@@ -37,6 +32,10 @@ async def lifespan(app: FastAPI):
     
     # Create logs directory
     os.makedirs("logs", exist_ok=True)
+    
+    # Start email task queue
+    app_logger.info("Starting email task queue...")
+    email_task_queue.start()
     
     # Initialize database
     app_logger.info("Initializing database...")
@@ -56,6 +55,8 @@ async def lifespan(app: FastAPI):
     
     if scheduler:
         shutdown_scheduler(scheduler)
+    
+    email_task_queue.stop()
     
     app_logger.info("✓ Application shut down gracefully")
 
@@ -119,14 +120,11 @@ async def global_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     import uvicorn
     
-    environment = os.getenv("ENVIRONMENT", "development")
-    log_level = os.getenv("LOG_LEVEL", "INFO")
-    
     uvicorn.run(
         "backend.main:app",
         host="0.0.0.0",
         port=8000,
-        reload=environment == "development",
-        log_level=log_level.lower()
+        reload=settings.environment == "development",
+        log_level=settings.log_level.lower()
     )
 

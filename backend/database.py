@@ -10,6 +10,8 @@ from datetime import datetime
 from typing import Generator
 import os
 
+from backend.config import settings
+
 Base = declarative_base()
 
 
@@ -21,6 +23,7 @@ class User(Base):
     verified = Column(Boolean, default=False)
     token = Column(String(255), unique=True, nullable=False)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
+    token_issued_at = Column(TIMESTAMP, default=datetime.utcnow)
     unsubscribed = Column(Boolean, default=False)
     last_notified_at = Column(TIMESTAMP, nullable=True)
     
@@ -120,7 +123,7 @@ class ScraperLog(Base):
 
 
 # Database connection setup
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/mostaql.db")
+DATABASE_URL = settings.database_url
 
 # Create engine
 engine = create_engine(

@@ -2,16 +2,17 @@
 Email service using Gmail SMTP (no domain required!)
 Limitation: 500 emails/day, requires App Password
 """
-import os
 import smtplib
+from email.header import Header
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formataddr
 from typing import List, Dict
 from loguru import logger
 
+from backend.config import settings
+
 # Gmail SMTP Configuration
-GMAIL_USER = os.getenv("GMAIL_USER", "")
-GMAIL_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587  # STARTTLS
 
@@ -39,26 +40,33 @@ VERIFICATION_TEMPLATE = """<!DOCTYPE html>
 </html>"""
 
 
+def _credentials_valid() -> bool:
+    return bool(settings.gmail_user and settings.gmail_app_password)
+
+
 def send_email_gmail(to_email: str, subject: str, html_body: str) -> bool:
     """
     Send email via Gmail SMTP
     Requires: Gmail App Password (not regular password!)
     """
+    if not _credentials_valid():
+        logger.error("Gmail credentials are missing; cannot send email")
+        return False
+
     try:
-        # Create message
         msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['From'] = f"خدمة مستقل <{GMAIL_USER}>"
+        msg['Subject'] = str(Header(subject, 'utf-8'))
+        msg['From'] = formataddr(
+            (str(Header("خدمة إشعارات مستقل", 'utf-8')), settings.gmail_user)
+        )
         msg['To'] = to_email
         
-        # Attach HTML body
         html_part = MIMEText(html_body, 'html', 'utf-8')
         msg.attach(html_part)
         
-        # Connect and send via Gmail SMTP
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls()
-            server.login(GMAIL_USER, GMAIL_PASSWORD)
+            server.login(settings.gmail_user, settings.gmail_app_password)
             server.send_message(msg)
         
         logger.info(f"✓ Email sent via Gmail to {to_email}")
@@ -69,11 +77,10 @@ def send_email_gmail(to_email: str, subject: str, html_body: str) -> bool:
         return False
 
 
-async def send_verification_email_gmail(email: str, token: str) -> bool:
+def send_verification_email_gmail(email: str, token: str) -> bool:
     """Send verification email via Gmail"""
     try:
-        base_url = os.getenv("BASE_URL", "http://localhost:8000")
-        verify_url = f"{base_url}/api/verify/{token}"
+        verify_url = f"{settings.base_url}/api/verify/{token}"
         html_content = VERIFICATION_TEMPLATE.format(verify_url=verify_url)
         
         return send_email_gmail(
@@ -87,7 +94,7 @@ async def send_verification_email_gmail(email: str, token: str) -> bool:
         return False
 
 
-async def send_job_notifications_gmail(email: str, category_name: str, jobs: List[Dict[str, str]], unsubscribe_token: str) -> bool:
+def send_job_notifications_gmail(email: str, category_name: str, jobs: List[Dict[str, str]], unsubscribe_token: str) -> bool:
     """Send job notification email via Gmail"""
     try:
         if not jobs:
@@ -98,8 +105,7 @@ async def send_job_notifications_gmail(email: str, category_name: str, jobs: Lis
             for job in jobs
         ])
         
-        base_url = os.getenv("BASE_URL", "http://localhost:8000")
-        unsubscribe_url = f"{base_url}/api/unsubscribe/{unsubscribe_token}"
+        unsubscribe_url = f"{settings.base_url}/api/unsubscribe/{unsubscribe_token}"
         
         html_content = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -117,7 +123,7 @@ async def send_job_notifications_gmail(email: str, category_name: str, jobs: Lis
         
         return send_email_gmail(
             to_email=email,
-            subject=f"مشاريع جديدة في {category_name} - مستقل",
+            subject=f"مشاريع جديدة في {category_name} - خدمة إشعارات مستقل",
             html_body=html_content
         )
         

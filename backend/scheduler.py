@@ -1,14 +1,14 @@
 """
 Background scheduler for periodic job scraping
 """
-import os
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.utils.logger import app_logger
-from backend.database import SessionLocal
-from backend.services.scraper import scrape_all_categories
+from backend.database import SessionLocal, Category
+from backend.services.scraper import scrape_category_with_logging
 from backend.services.notifier import process_new_jobs
+from backend.config import settings
 
 
 def run_scraper_job():
@@ -19,22 +19,30 @@ def run_scraper_job():
     try:
         app_logger.info("🔍 Starting scheduled scraper run...")
         
-        # Scrape all categories (creates its own db session)
-        stats = scrape_all_categories()
-        new_jobs = stats.get("new_jobs", 0)
-        
-        if new_jobs > 0:
-            app_logger.info(f"✓ Found {new_jobs} new jobs")
-            
-            # Process and send notifications
-            db = SessionLocal()
+        db = SessionLocal()
+        try:
+            category_ids = [category.id for category in db.query(Category.id).all()]
+        finally:
+            db.close()
+
+        total_new_jobs = 0
+        for category_id in category_ids:
             try:
-                notifications_sent = process_new_jobs(db)
-                app_logger.info(f"✓ Sent {notifications_sent} notifications")
-            finally:
-                db.close()
+                new_jobs = scrape_category_with_logging(category_id)
+                if not new_jobs:
+                    continue
+
+                total_new_jobs += len(new_jobs)
+                process_new_jobs(new_jobs, category_id)
+            except Exception as category_error:
+                app_logger.error(
+                    f"Error scraping or notifying for category {category_id}: {category_error}"
+                )
+        
+        if total_new_jobs == 0:
+            app_logger.info("No new jobs found in this run")
         else:
-            app_logger.info("No new jobs found")
+            app_logger.info(f"✓ Scrape run finished with {total_new_jobs} new jobs")
             
     except Exception as e:
         app_logger.error(f"Error in scraper job: {e}")
@@ -44,7 +52,7 @@ def start_scheduler():
     """
     Start the background scheduler
     """
-    interval_minutes = int(os.getenv("SCRAPER_INTERVAL_MINUTES", "30"))
+    interval_minutes = settings.scraper_interval_minutes
     
     scheduler = BackgroundScheduler()
     

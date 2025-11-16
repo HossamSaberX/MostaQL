@@ -3,7 +3,7 @@ Structured logging setup using loguru
 """
 from loguru import logger
 import sys
-import os
+from backend.config import settings
 
 
 def setup_logger():
@@ -12,8 +12,8 @@ def setup_logger():
     # Remove default handler
     logger.remove()
     
-    # Get log level from environment
-    log_level = os.getenv("LOG_LEVEL", "INFO")
+    # Get log level from settings
+    log_level = settings.log_level.upper()
     
     # Console handler with colored output
     logger.add(
