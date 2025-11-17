@@ -29,6 +29,8 @@ def run_scraper_job():
         total_new_jobs = 0
         skipped_count = 0
         
+        app_logger.debug(f"Processing {len(category_ids)} categories")
+        
         for category_id in category_ids:
             try:
                 # Poll: quick check first, full scrape only if needed

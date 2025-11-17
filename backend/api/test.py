@@ -9,8 +9,8 @@ import requests
 from bs4 import BeautifulSoup
 
 from backend.scheduler import run_scraper_job
-from backend.database import get_db, Category, Job
-from backend.services.scraper import quick_check_category, scrape_category_with_logging
+from backend.database import get_db, Category
+from backend.services.scraper import quick_check_category, scrape_category_with_logging, _job_exists_in_db
 
 
 class TestEmailRequest(BaseModel):
@@ -121,30 +121,32 @@ async def test_quick_check(category_id: int, db: Session = Depends(get_db)):
                 "message": f"Category {category_id} not found"
             }
         
-        # Run quick check (uses config default)
-        first_job_url = quick_check_category(category_id, category.mostaql_url)
+        # Run quick check
+        first_job = quick_check_category(category_id, category.mostaql_url)
         
-        if not first_job_url:
+        if not first_job:
             return {
                 "status": "success",
                 "category_id": category_id,
                 "category_name": category.name,
-                "first_job_url": None,
+                "first_job": None,
                 "exists_in_db": False,
                 "message": "No jobs found in quick check"
             }
         
-        # Check if exists in DB
-        existing_job = db.query(Job).filter(Job.url == first_job_url).first()
+        # Check if first job exists in DB
+        exists = _job_exists_in_db(db, first_job)
         
         return {
             "status": "success",
             "category_id": category_id,
             "category_name": category.name,
-            "first_job_url": first_job_url,
-            "exists_in_db": existing_job is not None,
-            "job_id_in_db": existing_job.id if existing_job else None,
-            "message": "First job unchanged, would skip full scrape" if existing_job else "New job detected, would trigger full scrape"
+            "first_job": {
+                "title": first_job['title'][:50],
+                "url": first_job['url'][:80]
+            },
+            "exists_in_db": exists,
+            "message": "First job unchanged, would skip full scrape" if exists else "New job detected, would trigger full scrape"
         }
         
     except Exception as e:
@@ -169,10 +171,10 @@ async def test_poll_category(category_id: int, db: Session = Depends(get_db)):
                 "message": f"Category {category_id} not found"
             }
         
-        # Run quick check first (uses config default)
-        first_job_url = quick_check_category(category_id, category.mostaql_url)
+        # Run quick check first
+        first_job = quick_check_category(category_id, category.mostaql_url)
         
-        if not first_job_url:
+        if not first_job:
             return {
                 "status": "success",
                 "category_id": category_id,
@@ -183,16 +185,13 @@ async def test_poll_category(category_id: int, db: Session = Depends(get_db)):
                 "message": "No jobs found, skipped"
             }
         
-        # Check if exists in DB
-        existing_job = db.query(Job).filter(Job.url == first_job_url).first()
-        
-        if existing_job:
+        # Check if first job exists in DB
+        if _job_exists_in_db(db, first_job):
             return {
                 "status": "success",
                 "category_id": category_id,
                 "category_name": category.name,
                 "quick_check_result": "unchanged",
-                "first_job_url": first_job_url,
                 "full_scrape_triggered": False,
                 "new_jobs_count": 0,
                 "message": "First job unchanged, skipped full scrape"
@@ -207,7 +206,10 @@ async def test_poll_category(category_id: int, db: Session = Depends(get_db)):
             "category_id": category_id,
             "category_name": category.name,
             "quick_check_result": "new_job_detected",
-            "first_job_url": first_job_url,
+            "first_job": {
+                "title": first_job['title'][:50],
+                "url": first_job['url'][:80]
+            },
             "full_scrape_triggered": True,
             "new_jobs_count": len(new_jobs),
             "new_jobs": [
@@ -250,10 +252,10 @@ async def test_poll_all(db: Session = Depends(get_db)):
         
         for category in categories:
             try:
-                # Quick check (uses config default)
-                first_job_url = quick_check_category(category.id, category.mostaql_url)
+                # Quick check
+                first_job = quick_check_category(category.id, category.mostaql_url)
                 
-                if not first_job_url:
+                if not first_job:
                     results.append({
                         "category_id": category.id,
                         "category_name": category.name,
@@ -263,16 +265,13 @@ async def test_poll_all(db: Session = Depends(get_db)):
                     skipped += 1
                     continue
                 
-                # Check if exists
-                existing_job = db.query(Job).filter(Job.url == first_job_url).first()
-                
-                if existing_job:
+                # Check if first job exists
+                if _job_exists_in_db(db, first_job):
                     results.append({
                         "category_id": category.id,
                         "category_name": category.name,
                         "action": "skipped",
-                        "reason": "unchanged",
-                        "first_job_url": first_job_url
+                        "reason": "unchanged"
                     })
                     skipped += 1
                 else:
@@ -281,8 +280,7 @@ async def test_poll_all(db: Session = Depends(get_db)):
                         "category_id": category.id,
                         "category_name": category.name,
                         "action": "would_scrape",
-                        "reason": "new_job_detected",
-                        "first_job_url": first_job_url
+                        "reason": "new_job_detected"
                     })
                     scraped += 1
                     

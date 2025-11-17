@@ -85,15 +85,12 @@ def parse_job_listing(link_element) -> Optional[Dict[str, str]]:
         return None
 
 
-def quick_check_category(category_id: int, category_url: str, check_count: Optional[int] = None) -> Optional[str]:
+def quick_check_category(category_id: int, category_url: str) -> Optional[Dict[str, str]]:
     """
-    Quick check: Only scrape first N items to see if anything changed.
-    Returns the URL of the first job if found, None if no jobs or error.
+    Quick check: Get the first job to see if anything changed.
+    Returns dict with 'title' and 'url' of first job, or None if no jobs found.
     This is much faster than full scrape.
     """
-    if check_count is None:
-        check_count = settings.scraper_quick_check_count
-    
     try:
         headers = get_headers()
         response = requests.get(
@@ -110,27 +107,32 @@ def quick_check_category(category_id: int, category_url: str, check_count: Optio
         if not tbody:
             return None
         
-        project_rows = tbody.find_all('tr', class_='project-row', limit=check_count)
+        project_rows = tbody.find_all('tr', class_='project-row', limit=1)
         
         if not project_rows:
             return None
         
-        # Get first job URL
+        # Get first job only
         first_row = project_rows[0]
         title_link = first_row.find('h2').find('a') if first_row.find('h2') else None
         
         if not title_link:
             return None
         
+        title = title_link.get_text(strip=True)
         url = title_link.get('href', '')
-        if not url:
+        
+        if not title or not url:
             return None
         
         # Make URL absolute
         if not url.startswith('http'):
             url = f"{settings.mostaql_base_url}{url}"
         
-        return url
+        return {
+            'title': title,
+            'url': url
+        }
         
     except Exception as e:
         logger.debug(f"Quick check failed for category {category_id}: {e}")
@@ -189,7 +191,7 @@ def scrape_category(category_id: int, category_url: str) -> List[Dict[str, str]]
                 
                 # Make URL absolute
                 if not url.startswith('http'):
-                    url = f"https://mostaql.com{url}"
+                    url = f"{settings.mostaql_base_url}{url}"
                 
                 jobs.append({
                     'title': title,
@@ -214,6 +216,18 @@ def scrape_category(category_id: int, category_url: str) -> List[Dict[str, str]]
         raise
 
 
+def _job_exists_in_db(db, job_data: Dict[str, str]) -> bool:
+    """
+    Check if a job already exists in DB by content_hash OR url.
+    Shared logic used by quick check and save_new_jobs.
+    """
+    content_hash = hash_content(job_data['title'])
+    existing = db.query(Job).filter(
+        (Job.content_hash == content_hash) | (Job.url == job_data['url'])
+    ).first()
+    return existing is not None
+
+
 def save_new_jobs(category_id: int, jobs: List[Dict[str, str]]) -> List[Job]:
     """
     Save new jobs to database (deduplicated by content hash)
@@ -224,20 +238,13 @@ def save_new_jobs(category_id: int, jobs: List[Dict[str, str]]) -> List[Job]:
     
     try:
         for job_data in jobs:
-            # Generate content hash
-            content = f"{job_data['title']}"
-            content_hash = hash_content(content)
-            
             # Check if job already exists (by hash or URL)
-            existing = db.query(Job).filter(
-                (Job.content_hash == content_hash) | (Job.url == job_data['url'])
-            ).first()
-            
-            if existing:
+            if _job_exists_in_db(db, job_data):
                 logger.debug(f"Job already exists: {job_data['title'][:50]}")
                 continue
             
             # Create new job
+            content_hash = hash_content(job_data['title'])
             job = Job(
                 title=job_data['title'],
                 url=job_data['url'],
@@ -321,24 +328,22 @@ def poll_category(category_id: int) -> List[Job]:
             logger.error(f"Category {category_id} not found")
             return []
         
-        # Quick check: get first job URL (uses config default)
-        first_job_url = quick_check_category(category_id, category.mostaql_url)
+        # Quick check: get first job only
+        first_job = quick_check_category(category_id, category.mostaql_url)
         
-        if not first_job_url:
+        if not first_job:
             # No jobs found, skip
-            logger.debug(f"No jobs found in quick check for category {category.name}")
+            logger.debug(f"Category {category.name} (ID {category_id}): No jobs found in quick check")
             return []
         
-        # Check if first job already exists in DB
-        existing_job = db.query(Job).filter(Job.url == first_job_url).first()
-        
-        if existing_job:
-            # First job hasn't changed, skip full scrape
-            logger.debug(f"Category {category.name}: First job unchanged, skipping full scrape")
+        # Check if first job already exists in DB (using same logic as save_new_jobs)
+        if _job_exists_in_db(db, first_job):
+            # First job unchanged, skip full scrape
+            logger.debug(f"Category {category.name} (ID {category_id}): First job unchanged, skipping full scrape")
             return []
         
         # First job is new, do full scrape
-        logger.info(f"Category {category.name}: New job detected, doing full scrape")
+        logger.info(f"Category {category.name} (ID {category_id}): New job detected, doing full scrape")
         return scrape_category_with_logging(category_id)
         
     except Exception as e:
