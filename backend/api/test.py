@@ -31,7 +31,6 @@ async def trigger_scraper():
     try:
         logger.info("🧪 Manual scraper trigger requested")
         
-        # Run scraper job synchronously
         run_scraper_job()
         
         return {
@@ -64,7 +63,6 @@ async def debug_scrape():
         response = requests.get(url, headers=headers, timeout=settings.http_request_timeout)
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Find tbody with projects
         tbody = soup.find('tbody', attrs={'data-filter': 'collection'})
         
         if not tbody:
@@ -73,7 +71,6 @@ async def debug_scrape():
                 "message": "No tbody with data-filter='collection' found"
             }
         
-        # Find project rows
         project_rows = tbody.find_all('tr', class_='project-row')
         samples = []
         
@@ -121,7 +118,6 @@ async def test_quick_check(category_id: int, db: Session = Depends(get_db)):
                 "message": f"Category {category_id} not found"
             }
         
-        # Run quick check
         first_job = quick_check_category(category_id, category.mostaql_url)
         
         if not first_job:
@@ -134,7 +130,6 @@ async def test_quick_check(category_id: int, db: Session = Depends(get_db)):
                 "message": "No jobs found in quick check"
             }
         
-        # Check if first job exists in DB
         exists = _job_exists_in_db(db, first_job)
         
         return {
@@ -171,7 +166,6 @@ async def test_poll_category(category_id: int, db: Session = Depends(get_db)):
                 "message": f"Category {category_id} not found"
             }
         
-        # Run quick check first
         first_job = quick_check_category(category_id, category.mostaql_url)
         
         if not first_job:
@@ -185,7 +179,6 @@ async def test_poll_category(category_id: int, db: Session = Depends(get_db)):
                 "message": "No jobs found, skipped"
             }
         
-        # Check if first job exists in DB
         if _job_exists_in_db(db, first_job):
             return {
                 "status": "success",
@@ -197,7 +190,6 @@ async def test_poll_category(category_id: int, db: Session = Depends(get_db)):
                 "message": "First job unchanged, skipped full scrape"
             }
         
-        # New job detected, do full scrape
         logger.info(f"🧪 Test: New job detected for category {category.name}, triggering full scrape")
         new_jobs = scrape_category_with_logging(category_id)
         
@@ -218,7 +210,7 @@ async def test_poll_category(category_id: int, db: Session = Depends(get_db)):
                     "title": job.title,
                     "url": job.url
                 }
-                for job in new_jobs[:10]  # Limit to first 10
+                for job in new_jobs[:10]
             ],
             "message": f"Found {len(new_jobs)} new jobs"
         }
@@ -252,7 +244,6 @@ async def test_poll_all(db: Session = Depends(get_db)):
         
         for category in categories:
             try:
-                # Quick check
                 first_job = quick_check_category(category.id, category.mostaql_url)
                 
                 if not first_job:
@@ -265,7 +256,6 @@ async def test_poll_all(db: Session = Depends(get_db)):
                     skipped += 1
                     continue
                 
-                # Check if first job exists
                 if _job_exists_in_db(db, first_job):
                     results.append({
                         "category_id": category.id,
@@ -275,7 +265,6 @@ async def test_poll_all(db: Session = Depends(get_db)):
                     })
                     skipped += 1
                 else:
-                    # Would trigger full scrape
                     results.append({
                         "category_id": category.id,
                         "category_name": category.name,
@@ -326,7 +315,6 @@ async def test_send_email(request: TestEmailRequest, db: Session = Depends(get_d
         
         provider = request.provider.lower()
         
-        # Get the specified provider service
         if provider == "brevo":
             service = BrevoEmailService()
         elif provider == "gmail":
@@ -337,7 +325,6 @@ async def test_send_email(request: TestEmailRequest, db: Session = Depends(get_d
                 "message": f"Unknown provider '{provider}'. Use 'gmail' or 'brevo'"
             }
         
-        # Send test email using the service's internal _send_email method
         success = service._send_email(
             to_email=request.email,
             subject=request.subject,

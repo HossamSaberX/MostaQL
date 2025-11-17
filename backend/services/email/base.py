@@ -96,7 +96,6 @@ class SMTPEmailService(EmailService):
             logger.info(f"Connecting to {self._get_provider_name()} SMTP: {host}:{port}")
             logger.info(f"Using login: {username}")
             
-            # Get sender email - use provider's method if exists, otherwise use username
             sender_email = getattr(self, '_get_sender_email', lambda: username)()
             logger.info(f"Using sender email: {sender_email}")
             
@@ -122,14 +121,10 @@ class SMTPEmailService(EmailService):
                 
                 logger.info(f"Sending message to {to_email}...")
                 
-                # Use sendmail to get more control and see server responses
-                # send_message() hides some details
                 try:
-                    # Get the raw message string to see what we're sending
                     msg_str = msg.as_string()
                     logger.info(f"Message size: {len(msg_str)} bytes")
                     
-                    # Use sendmail which gives us more control
                     refused = server.sendmail(sender_email, [to_email], msg_str)
                     
                     if refused:

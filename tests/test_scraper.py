@@ -64,9 +64,9 @@ def test_hash_content():
     hash2 = hash_content(content2)
     hash3 = hash_content(content3)
     
-    assert hash1 == hash2  # Same content = same hash
-    assert hash1 != hash3  # Different content = different hash
-    assert len(hash1) == 64  # SHA256 = 64 hex chars
+    assert hash1 == hash2
+    assert hash1 != hash3
+    assert len(hash1) == 64
 
 
 if __name__ == "__main__":

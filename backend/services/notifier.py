@@ -83,7 +83,7 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
                     status="pending",
                 )
                 db.add(notification)
-                db.flush()  # assign ID
+                db.flush()
 
                 notification_rows.setdefault(user.id, []).append(notification.id)
                 queued_notifications += 1

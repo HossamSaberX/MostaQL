@@ -1,2 +1,1 @@
-# Mostaql Job Notifier Backend
 

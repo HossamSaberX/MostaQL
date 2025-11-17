@@ -31,13 +31,11 @@ class BrevoEmailService(SMTPEmailService):
         if settings.brevo_sender_email:
             return settings.brevo_sender_email
         
-        # If no sender email is set, log a warning
         logger.warning(
             "BREVO_SENDER_EMAIL not set! "
             "The SMTP login cannot be used as sender. "
             "You must verify a sender email in Brevo dashboard and set BREVO_SENDER_EMAIL in .env"
         )
-        # Still return login as fallback, but it will fail
         return settings.brevo_smtp_login
     
     def _credentials_valid(self) -> bool:

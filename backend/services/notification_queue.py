@@ -70,7 +70,7 @@ class EmailTaskQueue:
                     unsubscribe_token=task.unsubscribe_token,
                 )
                 self._update_notification_status(task, success, None)
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:
                 app_logger.error(f"Email task failed for {task.email}: {exc}")
                 self._update_notification_status(task, False, str(exc))
             finally:
@@ -103,7 +103,7 @@ class EmailTaskQueue:
                 )
 
             db.commit()
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:
             db.rollback()
             app_logger.error(
                 f"Failed to update notification status for user {task.user_id}: {exc}"

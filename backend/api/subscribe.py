@@ -34,7 +34,7 @@ async def subscribe(
         result = service.subscribe(data.email, data.category_ids)
     except SubscriptionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
-    except Exception as exc:  # pragma: no cover - unexpected db errors
+    except Exception as exc:
         db.rollback()
         logger.error(f"Subscribe error for {data.email}: {exc}")
         raise HTTPException(status_code=500, detail="Internal server error")

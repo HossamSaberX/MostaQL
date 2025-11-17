@@ -83,7 +83,6 @@ class SubscriptionService:
                 send_verification=False,
             )
 
-        # User either unsubscribed or never verified → issue new token
         user.unsubscribed = False
         user.token = generate_token()
         user.token_issued_at = datetime.utcnow()
@@ -111,7 +110,7 @@ class SubscriptionService:
             unsubscribed=False,
         )
         self.db.add(user)
-        self.db.flush()  # assign ID
+        self.db.flush()
 
         for category_id in category_ids:
             self.db.add(

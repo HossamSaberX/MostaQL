@@ -52,22 +52,18 @@ async def health_check(db: Session = Depends(get_db)):
     Comprehensive health check with metrics
     """
     try:
-        # Test database connection
         db.execute(text("SELECT 1"))
         db_status = "connected"
         
-        # Get last scrape time
         last_scrape_log = db.query(ScraperLog).order_by(
             ScraperLog.scraped_at.desc()
         ).first()
         last_scrape = last_scrape_log.scraped_at if last_scrape_log else None
         
-        # Pending notifications count
         pending_notifications = db.query(Notification).filter(
             Notification.status == "pending"
         ).count()
         
-        # Scraper metrics (last 24 hours)
         yesterday = datetime.utcnow() - timedelta(hours=24)
         total_scrapes_24h = db.query(ScraperLog).filter(
             ScraperLog.scraped_at >= yesterday
@@ -93,7 +89,6 @@ async def health_check(db: Session = Depends(get_db)):
             categories_active=active_categories
         )
         
-        # Email metrics (today)
         today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         
         sent_today = db.query(Notification).filter(
@@ -112,7 +107,6 @@ async def health_check(db: Session = Depends(get_db)):
             failed_today=failed_today
         )
         
-        # Database metrics
         users_verified = db.query(User).filter(
             User.verified == True,
             User.unsubscribed == False

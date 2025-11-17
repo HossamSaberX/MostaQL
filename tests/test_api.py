@@ -8,7 +8,6 @@ from sqlalchemy.orm import sessionmaker
 from backend.main import app
 from backend.database import Base, get_db, Category
 
-# Test database
 TEST_DATABASE_URL = "sqlite:///./test_mostaql.db"
 engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -33,7 +32,6 @@ def setup_database():
     """Setup test database"""
     Base.metadata.create_all(bind=engine)
     
-    # Add test categories
     db = TestingSessionLocal()
     categories = [
         Category(name="برمجة", mostaql_url="https://mostaql.com/projects?category=1"),
@@ -45,7 +43,6 @@ def setup_database():
     
     yield
     
-    # Cleanup
     Base.metadata.drop_all(bind=engine)
 
 
@@ -100,7 +97,7 @@ def test_subscribe_invalid_email():
             "category_ids": [1]
         }
     )
-    assert response.status_code == 422  # Validation error
+    assert response.status_code == 422
 
 
 def test_subscribe_no_categories(setup_database):
@@ -121,7 +118,7 @@ def test_subscribe_too_many_categories(setup_database):
         "/api/subscribe",
         json={
             "email": "test3@example.com",
-            "category_ids": list(range(1, 12))  # 11 categories
+            "category_ids": list(range(1, 12))
         }
     )
     assert response.status_code == 422
@@ -130,14 +127,14 @@ def test_subscribe_too_many_categories(setup_database):
 def test_verify_invalid_token():
     """Test verification with invalid token"""
     response = client.get("/api/verify/invalid_token_12345")
-    assert response.status_code == 200  # Redirects are 200
+    assert response.status_code == 200
     assert "status=invalid" in response.headers.get("location", "")
 
 
 def test_unsubscribe_invalid_token():
     """Test unsubscribe with invalid token"""
     response = client.get("/api/unsubscribe/invalid_token_12345")
-    assert response.status_code == 200  # Redirects are 200
+    assert response.status_code == 200
     assert "status=invalid" in response.headers.get("location", "")
 
 

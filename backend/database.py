@@ -27,7 +27,6 @@ class User(Base):
     unsubscribed = Column(Boolean, default=False)
     last_notified_at = Column(TIMESTAMP, nullable=True)
     
-    # Relationships
     categories = relationship("UserCategory", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     
@@ -46,7 +45,6 @@ class Category(Base):
     last_scraped_at = Column(TIMESTAMP, nullable=True)
     scrape_failures = Column(Integer, default=0)
     
-    # Relationships
     user_categories = relationship("UserCategory", back_populates="category", cascade="all, delete-orphan")
     jobs = relationship("Job", back_populates="category")
     scraper_logs = relationship("ScraperLog", back_populates="category")
@@ -59,7 +57,6 @@ class UserCategory(Base):
     category_id = Column(Integer, ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
     
-    # Relationships
     user = relationship("User", back_populates="categories")
     category = relationship("Category", back_populates="user_categories")
     
@@ -74,11 +71,10 @@ class Job(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     title = Column(Text, nullable=False)
     url = Column(Text, unique=True, nullable=False)
-    content_hash = Column(String(64), nullable=False)  # SHA256 hash
+    content_hash = Column(String(64), nullable=False)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
     scraped_at = Column(TIMESTAMP, default=datetime.utcnow)
     
-    # Relationships
     category = relationship("Category", back_populates="jobs")
     notifications = relationship("Notification", back_populates="job", cascade="all, delete-orphan")
     
@@ -95,10 +91,9 @@ class Notification(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     job_id = Column(Integer, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
     sent_at = Column(TIMESTAMP, default=datetime.utcnow)
-    status = Column(String(20), default="pending")  # pending, sent, failed
+    status = Column(String(20), default="pending")
     error_message = Column(Text, nullable=True)
     
-    # Relationships
     user = relationship("User", back_populates="notifications")
     job = relationship("Job", back_populates="notifications")
     
@@ -112,20 +107,17 @@ class ScraperLog(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
-    status = Column(String(20), nullable=False)  # success, blocked, error
+    status = Column(String(20), nullable=False)
     jobs_found = Column(Integer, default=0)
     duration_seconds = Column(Float, nullable=True)
     error_message = Column(Text, nullable=True)
     scraped_at = Column(TIMESTAMP, default=datetime.utcnow)
     
-    # Relationships
     category = relationship("Category", back_populates="scraper_logs")
 
 
-# Database connection setup
 DATABASE_URL = settings.database_url
 
-# Create engine
 engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
@@ -159,19 +151,14 @@ def get_db() -> Generator:
 
 def init_db():
     """Initialize database and create tables"""
-    # Create data directory if it doesn't exist
     os.makedirs("data", exist_ok=True)
     
-    # Create all tables
     Base.metadata.create_all(bind=engine)
     
-    # Populate initial categories
     db = SessionLocal()
     try:
-        # Check if categories already exist
         existing_categories = db.query(Category).count()
         if existing_categories == 0:
-            # Mostaql category URLs using slugs
             from backend.config import settings
             base_url = settings.mostaql_base_url
             initial_categories = [

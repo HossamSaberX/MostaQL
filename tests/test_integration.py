@@ -19,7 +19,6 @@ def db_session():
     Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()
     
-    # Add test data
     category = Category(
         name="برمجة",
         mostaql_url="https://mostaql.com/projects?category=1"
@@ -35,7 +34,6 @@ def db_session():
 
 def test_user_subscription_flow(db_session):
     """Test complete user subscription flow"""
-    # 1. Create user
     token = generate_token()
     user = User(
         email="integration@example.com",
@@ -45,7 +43,6 @@ def test_user_subscription_flow(db_session):
     db_session.add(user)
     db_session.flush()
     
-    # 2. Add category subscription
     category = db_session.query(Category).first()
     user_category = UserCategory(
         user_id=user.id,
@@ -54,11 +51,9 @@ def test_user_subscription_flow(db_session):
     db_session.add(user_category)
     db_session.commit()
     
-    # 3. Verify user
     user.verified = True
     db_session.commit()
     
-    # Assertions
     assert user.id is not None
     assert user.verified is True
     assert len(user.categories) == 1
@@ -69,7 +64,6 @@ def test_user_subscription_flow(db_session):
 
 def test_job_creation_and_notification_flow(db_session):
     """Test job scraping and notification matching"""
-    # 1. Create verified user
     token = generate_token()
     user = User(
         email="job_test@example.com",
@@ -87,7 +81,6 @@ def test_job_creation_and_notification_flow(db_session):
     db_session.add(user_category)
     db_session.commit()
     
-    # 2. Create new job
     job = Job(
         title="Test Project",
         url="https://mostaql.com/projects/test",
@@ -97,18 +90,15 @@ def test_job_creation_and_notification_flow(db_session):
     db_session.add(job)
     db_session.commit()
     
-    # 3. Match users to job
     users_for_category = db_session.query(User).join(UserCategory).filter(
         UserCategory.category_id == category.id,
         User.verified == True,
         User.unsubscribed == False
     ).all()
     
-    # Assertions
     assert len(users_for_category) == 1
     assert users_for_category[0].email == "job_test@example.com"
     
-    # Cleanup
     db_session.delete(job)
     db_session.delete(user)
     db_session.commit()
@@ -116,7 +106,6 @@ def test_job_creation_and_notification_flow(db_session):
 
 def test_user_unsubscribe_flow(db_session):
     """Test user unsubscribe workflow"""
-    # 1. Create verified user
     token = generate_token()
     user = User(
         email="unsub_test@example.com",
@@ -127,11 +116,9 @@ def test_user_unsubscribe_flow(db_session):
     db_session.add(user)
     db_session.commit()
     
-    # 2. Unsubscribe
     user.unsubscribed = True
     db_session.commit()
     
-    # 3. Verify unsubscribed users are excluded
     active_users = db_session.query(User).filter(
         User.verified == True,
         User.unsubscribed == False
@@ -139,7 +126,6 @@ def test_user_unsubscribe_flow(db_session):
     
     assert user not in active_users
     
-    # Cleanup
     db_session.delete(user)
     db_session.commit()
 

@@ -33,7 +33,6 @@ def run_scraper_job():
         
         for category_id in category_ids:
             try:
-                # Poll: quick check first, full scrape only if needed
                 new_jobs = poll_category(category_id)
                 
                 if not new_jobs:
@@ -60,12 +59,10 @@ def start_scheduler():
     """
     Start the background scheduler with polling
     """
-    # Use polling interval (default 2 minutes) instead of legacy interval
     interval_minutes = getattr(settings, 'scraper_poll_interval_minutes', 2)
     
     scheduler = BackgroundScheduler()
     
-    # Add scraper job with polling interval
     scheduler.add_job(
         func=run_scraper_job,
         trigger=IntervalTrigger(minutes=interval_minutes),

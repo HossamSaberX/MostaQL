@@ -9,10 +9,8 @@ from backend.config import settings
 from backend.services.email.gmail import GmailEmailService
 from backend.services.email.brevo import BrevoEmailService
 
-# Export the base class for type hints
 from backend.services.email.base import EmailService
 
-# Thread-safe counter for round-robin alternating
 _alternate_lock = threading.Lock()
 _alternate_counter = 0
 
@@ -31,7 +29,6 @@ def get_email_service() -> EmailService:
     provider = getattr(settings, 'email_provider', 'gmail').lower()
     
     if provider == 'alternate':
-        # Round-robin: alternate between Gmail and Brevo
         global _alternate_counter
         with _alternate_lock:
             _alternate_counter += 1
@@ -42,13 +39,11 @@ def get_email_service() -> EmailService:
     elif provider == 'gmail':
         return GmailEmailService()
     else:
-        # Default to Gmail if unknown provider
         from backend.utils.logger import app_logger
         app_logger.warning(f"Unknown email provider '{provider}', defaulting to Gmail")
         return GmailEmailService()
 
 
-# Convenience functions that use the configured provider
 def send_verification_email(email: str, token: str) -> bool:
     """
     Send verification email using the configured provider.
@@ -57,7 +52,6 @@ def send_verification_email(email: str, token: str) -> bool:
     service = get_email_service()
     success = service.send_verification_email(email, token)
     
-    # If alternating and first attempt failed, try the other provider
     if not success and getattr(settings, 'email_provider', '').lower() == 'alternate':
         from backend.utils.logger import app_logger
         app_logger.info("First provider failed for verification email, trying alternate...")
@@ -80,7 +74,6 @@ def send_job_notifications(
     service = get_email_service()
     success = service.send_job_notifications(email, category_name, jobs, unsubscribe_token)
     
-    # If alternating and first attempt failed, try the other provider
     if not success and getattr(settings, 'email_provider', '').lower() == 'alternate':
         from backend.utils.logger import app_logger
         app_logger.info("First provider failed for job notifications, trying alternate...")
