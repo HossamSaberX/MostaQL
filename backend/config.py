@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/mostaql.db"
 
     # Email providers
-    email_provider: str = "gmail"  # Options: "gmail" or "brevo"
+    email_provider: str = "gmail"  # Options: "gmail", "brevo", or "alternate" (round-robin)
     
     # Gmail settings
     gmail_user: str = ""
