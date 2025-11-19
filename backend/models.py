@@ -122,3 +122,8 @@ class DetailedHealthResponse(BaseModel):
             }
         }
 
+
+class UnsubscribeRequest(BaseModel):
+    """Request model for unsubscribe request"""
+    email: EmailStr = Field(..., description="User's email address")
+

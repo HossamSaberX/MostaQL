@@ -33,6 +33,8 @@ def get_email_service() -> EmailService:
         with _alternate_lock:
             _alternate_counter += 1
             use_gmail = (_alternate_counter % 2) == 1
+            from backend.utils.logger import app_logger
+            app_logger.info(f"Alternate provider: counter={_alternate_counter}, using {'Gmail' if use_gmail else 'Brevo'}")
             return GmailEmailService() if use_gmail else BrevoEmailService()
     elif provider == 'brevo':
         return BrevoEmailService()
@@ -65,20 +67,38 @@ def send_job_notifications(
     email: str, 
     category_name: str, 
     jobs: List[Dict[str, str]], 
-    unsubscribe_token: str
+    unsubscribe_token: str = None,
+    bcc: List[str] = None
 ) -> bool:
     """
     Send job notifications using the configured provider.
     If EMAIL_PROVIDER=alternate, will try the other provider if first fails.
     """
     service = get_email_service()
-    success = service.send_job_notifications(email, category_name, jobs, unsubscribe_token)
+    success = service.send_job_notifications(email, category_name, jobs, unsubscribe_token, bcc)
     
     if not success and getattr(settings, 'email_provider', '').lower() == 'alternate':
         from backend.utils.logger import app_logger
         app_logger.info("First provider failed for job notifications, trying alternate...")
         alternate_service = BrevoEmailService() if isinstance(service, GmailEmailService) else GmailEmailService()
-        return alternate_service.send_job_notifications(email, category_name, jobs, unsubscribe_token)
+        return alternate_service.send_job_notifications(email, category_name, jobs, unsubscribe_token, bcc)
+    
+    return success
+
+
+def send_unsubscribe_email(email: str, token: str) -> bool:
+    """
+    Send unsubscribe email using the configured provider.
+    If EMAIL_PROVIDER=alternate, will try the other provider if first fails.
+    """
+    service = get_email_service()
+    success = service.send_unsubscribe_email(email, token)
+    
+    if not success and getattr(settings, 'email_provider', '').lower() == 'alternate':
+        from backend.utils.logger import app_logger
+        app_logger.info("First provider failed for unsubscribe email, trying alternate...")
+        alternate_service = BrevoEmailService() if isinstance(service, GmailEmailService) else GmailEmailService()
+        return alternate_service.send_unsubscribe_email(email, token)
     
     return success
 

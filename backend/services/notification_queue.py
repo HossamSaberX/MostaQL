@@ -16,12 +16,15 @@ from backend.utils.logger import app_logger
 
 @dataclass
 class EmailTask:
+    """
+    Represents an email job queued for delivery.
+    """
     notification_ids: List[int]
-    user_id: int
     email: str
     category_name: str
     jobs: List[Dict[str, str]]
-    unsubscribe_token: str
+    unsubscribe_token: Optional[str] = None
+    bcc: Optional[List[str]] = None
 
 
 class EmailTaskQueue:
@@ -68,6 +71,7 @@ class EmailTaskQueue:
                     category_name=task.category_name,
                     jobs=task.jobs,
                     unsubscribe_token=task.unsubscribe_token,
+                    bcc=task.bcc,
                 )
                 self._update_notification_status(task, success, None)
             except Exception as exc:
@@ -97,16 +101,24 @@ class EmailTaskQueue:
             )
 
             if success:
-                db.query(User).filter(User.id == task.user_id).update(
-                    {"last_notified_at": datetime.utcnow()},
-                    synchronize_session=False,
+                recipient_ids = (
+                    db.query(Notification.user_id)
+                    .filter(Notification.id.in_(task.notification_ids))
+                    .distinct()
+                    .all()
                 )
+                user_ids = [row[0] for row in recipient_ids if row[0]]
+                if user_ids:
+                    db.query(User).filter(User.id.in_(user_ids)).update(
+                        {"last_notified_at": datetime.utcnow()},
+                        synchronize_session=False,
+                    )
 
             db.commit()
         except Exception as exc:
             db.rollback()
             app_logger.error(
-                f"Failed to update notification status for user {task.user_id}: {exc}"
+                f"Failed to update notification status: {exc}"
             )
         finally:
             db.close()

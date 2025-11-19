@@ -1,20 +1,54 @@
 """
 Verify and unsubscribe endpoints
 """
-from fastapi import APIRouter, Depends
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 from loguru import logger
 
 from backend.database import get_db, User
 from backend.utils.security import is_token_expired
 from backend.config import settings
+from backend.models import UnsubscribeRequest
+from backend.services.email import send_unsubscribe_email
 
 router = APIRouter()
 
 def get_frontend_url(path: str) -> str:
     """Get absolute URL for frontend pages"""
     return f"{settings.base_url}/{path}"
+
+
+@router.post("/unsubscribe-request")
+async def request_unsubscribe(
+    data: UnsubscribeRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Request an unsubscribe link via email
+    """
+    try:
+        user = db.query(User).filter(User.email == data.email).first()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="البريد غير مسجل لدينا")
+
+        if user.unsubscribed:
+            raise HTTPException(status_code=400, detail="البريد غير مشترك حالياً")
+
+        background_tasks.add_task(send_unsubscribe_email, user.email, user.token)
+
+        return JSONResponse(
+            content={"message": "تم إرسال رابط إلغاء الاشتراك إلى بريدك الإلكتروني."}
+        )
+
+    except HTTPException as exc:
+        logger.warning(f"Unsubscribe request rejected for {data.email}: {exc.detail}")
+        raise exc
+    except Exception as e:
+        logger.error(f"Unsubscribe request error for {data.email}: {e}")
+        raise HTTPException(status_code=500, detail="خطأ داخلي، حاول لاحقاً")
 
 
 @router.get("/verify/{token}")

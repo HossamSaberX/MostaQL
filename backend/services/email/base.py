@@ -39,16 +39,32 @@ class EmailService(ABC):
         email: str,
         category_name: str,
         jobs: List[Dict[str, str]],
-        unsubscribe_token: str
+        unsubscribe_token: str = None,
+        bcc: List[str] = None
     ) -> bool:
         """
         Send job notification email with list of new jobs.
         
         Args:
-            email: Recipient email address
+            email: Recipient email address (To header)
             category_name: Name of the category
             jobs: List of job dictionaries with 'title' and 'url' keys
-            unsubscribe_token: Token for unsubscribe link
+            unsubscribe_token: Token for unsubscribe link (optional if using generic link)
+            bcc: List of BCC recipients (optional)
+            
+        Returns:
+            True if email was sent successfully, False otherwise
+        """
+        pass
+    
+    @abstractmethod
+    def send_unsubscribe_email(self, email: str, token: str) -> bool:
+        """
+        Send unsubscribe confirmation email.
+        
+        Args:
+            email: Recipient email address
+            token: Unsubscribe token
             
         Returns:
             True if email was sent successfully, False otherwise
@@ -82,7 +98,7 @@ class SMTPEmailService(EmailService):
         """Check if credentials are configured"""
         pass
     
-    def _send_email(self, to_email: str, subject: str, html_body: str) -> bool:
+    def _send_email(self, to_email: str, subject: str, html_body: str, bcc: List[str] = None) -> bool:
         """
         Send email via SMTP (shared implementation).
         """
@@ -109,6 +125,22 @@ class SMTPEmailService(EmailService):
             html_part = MIMEText(html_body, 'html', 'utf-8')
             msg.attach(html_part)
             
+            recipients = []
+            is_real_to_address = bool(
+                to_email
+                and ("@" in to_email)
+                and not to_email.lower().startswith("undisclosed")
+            )
+            if is_real_to_address:
+                recipients.append(to_email)
+
+            if bcc:
+                recipients.extend(bcc)
+
+            if not recipients:
+                logger.warning("No recipients for email")
+                return False
+            
             logger.info("Creating SMTP connection...")
             server = smtplib.SMTP(host, port, timeout=settings.smtp_timeout)
             try:
@@ -119,21 +151,22 @@ class SMTPEmailService(EmailService):
                 server.login(username, password)
                 logger.info("✓ Login successful")
                 
-                logger.info(f"Sending message to {to_email}...")
+                logger.info(f"Sending message to {len(recipients)} recipients...")
                 
                 try:
                     msg_str = msg.as_string()
                     logger.info(f"Message size: {len(msg_str)} bytes")
                     
-                    refused = server.sendmail(sender_email, [to_email], msg_str)
+                    refused = server.sendmail(sender_email, recipients, msg_str)
                     
                     if refused:
                         logger.error(f"✗ SMTP sendmail returned refused recipients: {refused}")
                         for email_addr, (code, error_msg) in refused.items():
                             logger.error(f"Refused recipient {email_addr}: {code} - {error_msg}")
-                        return False
+                        if len(refused) == len(recipients):
+                            return False
                     
-                    logger.info(f"✓ Email sent via {self._get_provider_name()} to {to_email}")
+                    logger.info(f"✓ Email sent via {self._get_provider_name()} to {len(recipients)} recipients")
                     logger.info(f"SMTP sendmail returned: {refused} (empty dict = success)")
                     return True
                 except smtplib.SMTPRecipientsRefused as e:
@@ -188,7 +221,8 @@ class SMTPEmailService(EmailService):
         email: str,
         category_name: str,
         jobs: List[Dict[str, str]],
-        unsubscribe_token: str
+        unsubscribe_token: str = None,
+        bcc: List[str] = None
     ) -> bool:
         """Send job notification email (shared implementation)"""
         from backend.config import settings
@@ -198,16 +232,40 @@ class SMTPEmailService(EmailService):
             if not jobs:
                 return False
             
-            unsubscribe_url = f"{settings.base_url}/api/unsubscribe/{unsubscribe_token}"
+            generic_unsubscribe = f"{settings.base_url}/unsubscribe-request.html"
+            unsubscribe_url = generic_unsubscribe
+            if not bcc and unsubscribe_token:
+                unsubscribe_url = f"{settings.base_url}/api/unsubscribe/{unsubscribe_token}"
+
             html_content = get_job_notifications_html(category_name, jobs, unsubscribe_url)
             
             return self._send_email(
                 to_email=email,
                 subject=f"مشاريع جديدة في {category_name} - خدمة إشعارات مستقل",
+                html_body=html_content,
+                bcc=bcc
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to send job notification to {email} (bcc={len(bcc) if bcc else 0}): {e}")
+            return False
+    
+    def send_unsubscribe_email(self, email: str, token: str) -> bool:
+        """Send unsubscribe email (shared implementation)"""
+        from backend.config import settings
+        from backend.services.email.templates import get_unsubscribe_email_html
+        
+        try:
+            unsubscribe_url = f"{settings.base_url}/api/unsubscribe/{token}"
+            html_content = get_unsubscribe_email_html(unsubscribe_url)
+            
+            return self._send_email(
+                to_email=email,
+                subject="تأكيد إلغاء الاشتراك - خدمة إشعارات مستقل",
                 html_body=html_content
             )
             
         except Exception as e:
-            logger.error(f"Failed to send job notification to {email}: {e}")
+            logger.error(f"Failed to send unsubscribe email to {email}: {e}")
             return False
 

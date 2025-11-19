@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إلغاء الاشتراك</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+    <div class="page-wrapper">
+        <div class="card">
+            <div class="header">
+                <h1>إلغاء الاشتراك</h1>
+                <p>أدخل بريدك الإلكتروني لإلغاء الاشتراك من الإشعارات</p>
+            </div>
+            
+            <form id="unsubscribeForm">
+                <div class="form-group">
+                    <label for="email">البريد الإلكتروني</label>
+                    <input type="email" id="email" required placeholder="name@example.com">
+                </div>
+                
+                <button type="submit" id="submitBtn">إلغاء الاشتراك</button>
+            </form>
+            
+            <div id="message" class="message" style="display: none;"></div>
+            
+            <a class="helper-text" href="/">← العودة للصفحة الرئيسية</a>
+        </div>
+    </div>
+    
+    <script>
+        const form = document.getElementById('unsubscribeForm');
+        const messageDiv = document.getElementById('message');
+        const submitBtn = document.getElementById('submitBtn');
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'جاري الإرسال...';
+            messageDiv.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/unsubscribe-request', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email }),
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    messageDiv.className = 'message success';
+                    messageDiv.textContent = data.message || 'تم إرسال رابط إلغاء الاشتراك إلى بريدك الإلكتروني.';
+                    form.reset();
+                } else {
+                    messageDiv.className = 'message error';
+                    messageDiv.textContent = data.detail || 'حدث خطأ. يرجى المحاولة مرة أخرى.';
+                }
+            } catch (error) {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = 'حدث خطأ في الاتصال. يرجى التحقق من الإنترنت.';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'إلغاء الاشتراك';
+                messageDiv.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

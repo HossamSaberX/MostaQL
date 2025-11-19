@@ -13,6 +13,7 @@ from backend.database import (
     UserCategory,
 )
 from backend.services.notification_queue import EmailTask, email_task_queue
+from backend.config import settings
 
 
 def _get_users_for_category(category_id: int, db) -> List[User]:
@@ -36,21 +37,33 @@ def _build_email_tasks(
 ) -> List[EmailTask]:
     job_payloads = [{"title": job.title, "url": job.url} for job in jobs]
     tasks: List[EmailTask] = []
-    for user in users:
-        notification_ids = notification_rows.get(user.id, [])
-        if not notification_ids:
-            continue
+
+    active_users = [user for user in users if user.id in notification_rows]
+    total_active = len(active_users)
+    if total_active == 0:
+        return tasks
+
+    configured_batch = getattr(settings, "email_bcc_batch_size", 0)
+    batch_size = total_active if configured_batch <= 0 else min(configured_batch, total_active)
+
+    for start in range(0, total_active, batch_size):
+        batch_users = active_users[start:start + batch_size]
+        bcc_emails = [user.email for user in batch_users]
+        batch_notification_ids = []
+        for user in batch_users:
+            batch_notification_ids.extend(notification_rows.get(user.id, []))
 
         tasks.append(
             EmailTask(
-                notification_ids=notification_ids,
-                user_id=user.id,
-                email=user.email,
+                notification_ids=batch_notification_ids,
+                email="undisclosed-recipients:;",
                 category_name=category_name,
                 jobs=job_payloads,
-                unsubscribe_token=user.token,
+                unsubscribe_token=None,
+                bcc=bcc_emails,
             )
         )
+
     return tasks
 
 
