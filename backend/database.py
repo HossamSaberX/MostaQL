@@ -157,24 +157,37 @@ def init_db():
     
     db = SessionLocal()
     try:
-        existing_categories = db.query(Category).count()
-        if existing_categories == 0:
-            from backend.config import settings
-            base_url = settings.mostaql_base_url
-            initial_categories = [
-                Category(name="برمجة، تطوير المواقع والتطبيقات", mostaql_url=f"{base_url}/projects?category=development&sort=latest"),
-                Category(name="تصميم، فيديو وصوتيات", mostaql_url=f"{base_url}/projects?category=design&sort=latest"),
-                Category(name="كتابة، تحرير، ترجمة ولغات", mostaql_url=f"{base_url}/projects?category=writing-translation&sort=latest"),
-                Category(name="تسويق إلكتروني ومبيعات", mostaql_url=f"{base_url}/projects?category=marketing&sort=latest"),
-                Category(name="أعمال وخدمات استشارية", mostaql_url=f"{base_url}/projects?category=business&sort=latest"),
-                Category(name="هندسة، عمارة وتصميم داخلي", mostaql_url=f"{base_url}/projects?category=engineering-architecture&sort=latest"),
-                Category(name="تدريب وتعليم عن بعد", mostaql_url=f"{base_url}/projects?category=training&sort=latest"),
-            ]
-            db.add_all(initial_categories)
+        from backend.config import settings
+        base_url = settings.mostaql_base_url
+        desired_categories = [
+            ("برمجة، تطوير المواقع والتطبيقات", "development"),
+            ("تصميم، فيديو وصوتيات", "design"),
+            ("كتابة، تحرير، ترجمة ولغات", "writing-translation"),
+            ("تسويق إلكتروني ومبيعات", "marketing"),
+            ("أعمال وخدمات استشارية", "business"),
+            ("هندسة، عمارة وتصميم داخلي", "engineering-architecture"),
+            ("تدريب وتعليم عن بعد", "training"),
+            ("دعم، مساعدة وإدخال بيانات", "support"),
+        ]
+
+        existing = {category.name for category in db.query(Category).all()}
+
+        to_create = []
+        for name, slug in desired_categories:
+            if name not in existing:
+                to_create.append(
+                    Category(
+                        name=name,
+                        mostaql_url=f"{base_url}/projects?category={slug}&sort=latest",
+                    )
+                )
+
+        if to_create:
+            db.add_all(to_create)
             db.commit()
-            print(f"✓ Initialized {len(initial_categories)} categories")
+            print(f"✓ Added {len(to_create)} missing categories")
         else:
-            print(f"✓ Database already has {existing_categories} categories")
+            print(f"✓ All {len(desired_categories)} categories already exist")
     except Exception as e:
         print(f"✗ Error initializing database: {e}")
         db.rollback()

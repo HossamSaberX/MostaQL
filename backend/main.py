@@ -9,6 +9,12 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import (
+    request_validation_exception_handler,
+    http_exception_handler,
+)
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.database import init_db
 from backend.utils.logger import app_logger
@@ -95,13 +101,27 @@ async def root():
     }
 
 
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    """Return consistent JSON for request validation errors"""
+    app_logger.warning(f"Validation error on {request.url.path}: {exc.errors()}")
+    return await request_validation_exception_handler(request, exc)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Unified handler for HTTP exceptions raised by FastAPI/Starlette"""
+    app_logger.warning(f"HTTP {exc.status_code} on {request.url.path}: {exc.detail}")
+    return await http_exception_handler(request, exc)
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler"""
-    app_logger.error(f"Unhandled exception: {exc}")
+    """Catch-all handler to prevent leaking internal errors"""
+    app_logger.error(f"Unhandled exception on {request.url.path}: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error"}
+        content={"detail": "حدث خطأ غير متوقع، يرجى المحاولة لاحقاً"}
     )
 
 
