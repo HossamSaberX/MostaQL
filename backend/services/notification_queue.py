@@ -110,9 +110,9 @@ class EmailTaskQueue:
                 user_ids = [row[0] for row in recipient_ids if row[0]]
                 if user_ids:
                     db.query(User).filter(User.id.in_(user_ids)).update(
-                        {"last_notified_at": datetime.utcnow()},
-                        synchronize_session=False,
-                    )
+                    {"last_notified_at": datetime.utcnow()},
+                    synchronize_session=False,
+                )
 
             db.commit()
         except Exception as exc:

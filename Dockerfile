@@ -12,7 +12,7 @@ WORKDIR /app
 
 RUN adduser -D -u 1000 appuser && \
     mkdir -p /app/data /app/logs && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app/data /app/logs
 
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin

@@ -37,7 +37,7 @@ def _build_email_tasks(
 ) -> List[EmailTask]:
     job_payloads = [{"title": job.title, "url": job.url} for job in jobs]
     tasks: List[EmailTask] = []
-
+    
     active_users = [user for user in users if user.id in notification_rows]
     total_active = len(active_users)
     if total_active == 0:
@@ -52,7 +52,7 @@ def _build_email_tasks(
         batch_notification_ids = []
         for user in batch_users:
             batch_notification_ids.extend(notification_rows.get(user.id, []))
-
+            
         tasks.append(
             EmailTask(
                 notification_ids=batch_notification_ids,
@@ -63,7 +63,7 @@ def _build_email_tasks(
                 bcc=bcc_emails,
             )
         )
-
+        
     return tasks
 
 

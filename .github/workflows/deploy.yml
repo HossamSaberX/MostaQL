@@ -20,6 +20,11 @@ jobs:
           script: |
             cd /root/mostaql-notifier
             git pull origin main
+            
+            # Fix permissions for appuser (uid 1000)
+            mkdir -p logs data
+            chown -R 1000:1000 logs data
+            
             docker compose down
             docker compose build --no-cache
             docker compose up -d

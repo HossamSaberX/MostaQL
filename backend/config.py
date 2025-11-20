@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     
     gmail_user: str = ""
     gmail_app_password: str = ""
-    
+
     brevo_smtp_key: str = ""
     brevo_smtp_login: str = ""
     brevo_sender_email: str = ""
