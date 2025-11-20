@@ -1,60 +1,65 @@
-version: '3.8'
-
 services:
-  nginx:
-    image: nginx:alpine
-    container_name: mostaql-nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./frontend:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro  # For SSL certificates
-    depends_on:
-      - api
+  mostaql-notifier:
+    build: .
+    container_name: mostaql-app
     restart: unless-stopped
-    networks:
-      - mostaql-network
-
-  api:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    container_name: mostaql-api
-    environment:
-      - DATABASE_URL=sqlite:///./data/mostaql.db
-      - RESEND_API_KEY=${RESEND_API_KEY}
-      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL}
-      - BASE_URL=${BASE_URL}
-      - SECRET_KEY=${SECRET_KEY}
-      - SCRAPER_INTERVAL_MINUTES=${SCRAPER_INTERVAL_MINUTES:-30}
-      - MAX_CATEGORIES_PER_USER=${MAX_CATEGORIES_PER_USER:-10}
-      - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-5}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
+    env_file:
+      - .env
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
-    expose:
-      - "8000"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
     networks:
-      - mostaql-network
+      - caddy_network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
-networks:
-  mostaql-network:
-    driver: bridge
+  sqlite-web:
+    image: coleifer/sqlite-web:latest
+    container_name: sqlite-web
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    networks:
+      - caddy_network
+    command: ["sqlite_web", "/data/mostaql.db", "-H", "0.0.0.0", "-x", "/data"]
+    depends_on:
+      - mostaql-notifier
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    networks:
+      - caddy_network
+    environment:
+      - DOMAIN=${DOMAIN:-officerkpaid.duckdns.org}
+      - DB_DOMAIN=${DB_DOMAIN:-db.officerkpaid.duckdns.org}
+      - EMAIL=${EMAIL}
+      - DUCKDNS_TOKEN=${DUCKDNS_TOKEN}
+      - DB_ADMIN_USER=${DB_ADMIN_USER:-admin}
+      - DB_ADMIN_HASH=${DB_ADMIN_HASH}
 
 volumes:
-  data:
-    driver: local
-  logs:
-    driver: local
+  caddy_data:
+  caddy_config:
 
+networks:
+  caddy_network:
+    driver: bridge

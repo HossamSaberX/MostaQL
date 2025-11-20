@@ -1,0 +1,46 @@
+{
+    email {$EMAIL}
+    acme_dns duckdns {$DUCKDNS_TOKEN}
+}
+
+{$DOMAIN:officerkpaid.duckdns.org} {
+    reverse_proxy mostaql-app:8000
+    
+    encode gzip
+    
+    header {
+        -Server
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+    }
+    
+    log {
+        output file /data/access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}
+
+{$DB_DOMAIN:db.officerkpaid.duckdns.org} {
+    reverse_proxy sqlite-web:8080
+    
+    basicauth {
+        {$DB_ADMIN_USER:admin} {$DB_ADMIN_HASH}
+    }
+    
+    encode gzip
+    
+    header {
+        -Server
+    }
+    
+    log {
+        output file /data/db-access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}
