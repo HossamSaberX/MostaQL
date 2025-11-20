@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="header">
+        <h1>إلغاء الاشتراك</h1>
+        <p>أدخل بريدك الإلكتروني لإلغاء الاشتراك من الإشعارات</p>
+    </div>
+    
+    <form id="unsubscribeForm">
+        <div class="form-group">
+            <label for="email">البريد الإلكتروني</label>
+            <input type="email" id="email" required placeholder="name@example.com">
+        </div>
+        
+        <button type="submit" id="submitBtn" class="form-action">إلغاء الاشتراك</button>
+    </form>
+    
+    <div id="message" class="message" style="display: none;"></div>
+    
+    <a class="helper-text" href="/">← العودة للصفحة الرئيسية</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const form = document.getElementById('unsubscribeForm');
+    const messageDiv = document.getElementById('message');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const email = document.getElementById('email').value;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'جاري الإرسال...';
+        messageDiv.style.display = 'none';
+        
+        try {
+            const response = await fetch('/api/unsubscribe-request', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email }),
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                messageDiv.className = 'message success';
+                messageDiv.textContent = data.message || 'تم إرسال رابط إلغاء الاشتراك إلى بريدك الإلكتروني.';
+                form.reset();
+            } else {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = data.detail || 'حدث خطأ. يرجى المحاولة مرة أخرى.';
+            }
+        } catch (error) {
+            messageDiv.className = 'message error';
+            messageDiv.textContent = 'حدث خطأ في الاتصال. يرجى التحقق من الإنترنت.';
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'إلغاء الاشتراك';
+            messageDiv.style.display = 'block';
+        }
+    });
+</script>
+{% endblock %}
+

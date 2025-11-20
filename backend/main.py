@@ -3,7 +3,7 @@ FastAPI application entry point
 """
 import os
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
@@ -15,6 +15,7 @@ from fastapi.exception_handlers import (
     http_exception_handler,
 )
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.templating import Jinja2Templates
 
 from backend.database import init_db
 from backend.utils.logger import app_logger
@@ -84,10 +85,53 @@ app.include_router(verify.router, prefix="/api", tags=["verify"])
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(test.router, prefix="/api/test", tags=["testing"])
 
-frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
-if os.path.exists(frontend_dir):
-    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
-    app_logger.info(f"✓ Serving frontend from: {frontend_dir}")
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/assets", StaticFiles(directory=static_dir), name="assets")
+    app_logger.info(f"✓ Serving assets from: {static_dir}")
+
+templates_dir = os.path.join(os.path.dirname(__file__), "templates")
+templates = Jinja2Templates(directory=templates_dir)
+
+
+@app.get("/", response_class=HTMLResponse)
+async def landing_page(request: Request):
+    return templates.TemplateResponse(
+        "subscribe.html",
+        {"request": request, "title": "تنبيهات وظائف مستقل"}
+    )
+
+
+@app.get("/verify.html", response_class=HTMLResponse)
+async def verify_page(request: Request):
+    return templates.TemplateResponse(
+        "verify.html",
+        {
+            "request": request,
+            "title": "تأكيد البريد الإلكتروني",
+            "page_wrapper_class": "status-wrapper"
+        }
+    )
+
+
+@app.get("/unsubscribe.html", response_class=HTMLResponse)
+async def unsubscribe_page(request: Request):
+    return templates.TemplateResponse(
+        "unsubscribe.html",
+        {
+            "request": request,
+            "title": "إلغاء الاشتراك",
+            "page_wrapper_class": "status-wrapper"
+        }
+    )
+
+
+@app.get("/unsubscribe-request.html", response_class=HTMLResponse)
+async def unsubscribe_request_page(request: Request):
+    return templates.TemplateResponse(
+        "unsubscribe_request.html",
+        {"request": request, "title": "طلب إلغاء الاشتراك"}
+    )
 
 
 @app.get("/api")

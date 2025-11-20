@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div id="statusContent"></div>
+    <a class="helper-text" href="/">← العودة للصفحة الرئيسية</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const status = new URLSearchParams(window.location.search).get('status');
+    const content = document.getElementById('statusContent');
+    const config = {
+        success: {
+            icon: '✅',
+            title: 'تم التأكيد بنجاح',
+            message: 'شكراً لك! تم تأكيد بريدك الإلكتروني وستصل التنبيهات قريباً.'
+        },
+        already_verified: {
+            icon: '✓',
+            title: 'البريد مؤكد مسبقاً',
+            message: 'يمكنك العودة للخدمة أو تحديث تفضيلاتك في أي وقت.'
+        },
+        expired: {
+            icon: '⏰',
+            title: 'انتهت صلاحية الرابط',
+            message: 'يرجى إعادة الاشتراك للحصول على رابط جديد صالح لمدة 24 ساعة.'
+        },
+        invalid: {
+            icon: '❌',
+            title: 'رابط غير صالح',
+            message: 'يبدو أن الرابط غير صحيح أو تم استخدامه مسبقاً.'
+        },
+        error: {
+            icon: '⚠️',
+            title: 'حدث خطأ',
+            message: 'يرجى المحاولة لاحقاً أو إعادة الاشتراك.'
+        }
+    };
+
+    const view = config[status] || config.error;
+    content.innerHTML = `
+        <div class="status-icon">${view.icon}</div>
+        <h2 class="status-title">${view.title}</h2>
+        <p class="status-message">${view.message}</p>
+    `;
+</script>
+{% endblock %}
+

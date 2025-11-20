@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div id="statusContent"></div>
+    <a class="helper-text" href="/">← العودة للصفحة الرئيسية</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const status = new URLSearchParams(window.location.search).get('status');
+    const content = document.getElementById('statusContent');
+    const statusMessages = {
+        success: {
+            icon: '✅',
+            title: 'تم إلغاء الاشتراك',
+            message: 'لن تصلك إشعارات جديدة. يمكنك العودة والاشتراك مجدداً في أي وقت.'
+        },
+        already_unsubscribed: {
+            icon: 'ℹ️',
+            title: 'تم الإلغاء مسبقاً',
+            message: 'لا يوجد اشتراك مفعّل لهذا البريد الإلكتروني.'
+        },
+        invalid: {
+            icon: '❌',
+            title: 'رابط غير صالح',
+            message: 'يبدو أن رابط إلغاء الاشتراك غير صحيح.'
+        },
+        error: {
+            icon: '⚠️',
+            title: 'حدث خطأ',
+            message: 'تعذر تنفيذ الطلب حالياً. يرجى المحاولة لاحقاً.'
+        }
+    };
+
+    const view = statusMessages[status] || statusMessages.error;
+    content.innerHTML = `
+        <div class="status-icon">${view.icon}</div>
+        <h2 class="status-title">${view.title}</h2>
+        <p class="status-message">${view.message}</p>
+    `;
+</script>
+{% endblock %}
+
