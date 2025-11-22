@@ -34,7 +34,13 @@ class SubscriptionService:
         self.db = db
         self.max_categories = settings.max_categories_per_user
 
-    def subscribe(self, email: str, category_ids: List[int]) -> SubscriptionResult:
+    def subscribe(
+        self, 
+        email: str, 
+        category_ids: List[int],
+        receive_email: bool = True,
+        receive_telegram: bool = True
+    ) -> SubscriptionResult:
         normalized_ids = self._normalize_category_ids(category_ids)
         if not normalized_ids:
             raise SubscriptionError("اختر تخصصاً واحداً على الأقل")
@@ -47,9 +53,9 @@ class SubscriptionService:
 
         user = self.db.query(User).filter(User.email == email).first()
         if user:
-            return self._handle_existing_user(user, normalized_ids)
+            return self._handle_existing_user(user, normalized_ids, receive_email, receive_telegram)
 
-        return self._create_new_user(email, normalized_ids)
+        return self._create_new_user(email, normalized_ids, receive_email, receive_telegram)
 
     def _normalize_category_ids(self, category_ids: List[int]) -> List[int]:
         return sorted({int(category_id) for category_id in category_ids})
@@ -72,8 +78,12 @@ class SubscriptionService:
         self,
         user: User,
         category_ids: List[int],
+        receive_email: bool,
+        receive_telegram: bool,
     ) -> SubscriptionResult:
         self._replace_user_categories(user.id, category_ids)
+        user.receive_email = receive_email
+        user.receive_telegram = receive_telegram
 
         # Case 1: User is verified and active (just updating preferences)
         if user.verified and not user.unsubscribed:
@@ -82,19 +92,18 @@ class SubscriptionService:
                 user=user,
                 message="تم تحديث تفضيلاتك بنجاح",
                 send_verification=False,
-                token=user.token # Always return token for Telegram button
+                token=user.token
             )
 
         # Case 2: User was unsubscribed, now resubscribing (Welcome back!)
         if user.verified and user.unsubscribed:
             user.unsubscribed = False
-            # Don't change token, don't re-verify email
             self.db.commit()
             return SubscriptionResult(
                 user=user,
                 message="مرحباً بعودتك! تم إعادة تفعيل اشتراكك بنجاح.",
-                send_verification=False, # No need to verify again
-                token=user.token # Always return token for Telegram button
+                send_verification=False,
+                token=user.token
             )
 
         # Case 3: User is NOT verified (Re-send verification)
@@ -115,6 +124,8 @@ class SubscriptionService:
         self,
         email: str,
         category_ids: List[int],
+        receive_email: bool,
+        receive_telegram: bool,
     ) -> SubscriptionResult:
         token = generate_token()
         user = User(
@@ -123,6 +134,8 @@ class SubscriptionService:
             token_issued_at=datetime.utcnow(),
             verified=False,
             unsubscribed=False,
+            receive_email=receive_email,
+            receive_telegram=receive_telegram,
         )
         self.db.add(user)
         self.db.flush()

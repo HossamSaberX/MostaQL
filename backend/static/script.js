@@ -92,6 +92,14 @@ form.addEventListener('submit', async (event) => {
     return;
   }
 
+  const receiveEmail = document.getElementById('receiveEmail').checked;
+  const receiveTelegram = document.getElementById('receiveTelegram').checked;
+
+  if (!receiveEmail && !receiveTelegram) {
+    toggleGlobalAlert(errorMessage, 'يجب اختيار طريقة إشعار واحدة على الأقل');
+    return;
+  }
+
   submitBtn.disabled = true;
   submitBtn.textContent = 'جاري الإرسال...';
 
@@ -102,37 +110,45 @@ form.addEventListener('submit', async (event) => {
       body: JSON.stringify({
         email: emailInput.value.trim(),
         category_ids: selectedCategories,
+        receive_email: receiveEmail,
+        receive_telegram: receiveTelegram,
       }),
     });
 
     const data = await response.json();
     if (response.ok) {
-      toggleGlobalAlert(successMessage, data.message || 'تم الاشتراك بنجاح');
-      form.reset();
+      const receiveEmailChecked = document.getElementById('receiveEmail').checked;
+      const receiveTelegramChecked = document.getElementById('receiveTelegram').checked;
       
-      // Show Telegram button if token is present
       const telegramSection = document.getElementById('telegramSection');
       const telegramBtn = document.getElementById('telegramBtn');
       const resetSection = document.getElementById('resetSection');
+      const subtitle = document.querySelector('.subtitle');
       
-      if (data.token && typeof telegramBotUsername !== 'undefined' && telegramBotUsername) {
+      form.style.display = 'none';
+      toggleGlobalAlert(successMessage, '');
+      
+      if (receiveTelegramChecked && data.token && typeof telegramBotUsername !== 'undefined' && telegramBotUsername) {
           telegramBtn.href = `https://t.me/${telegramBotUsername}?start=${data.token}`;
-          
-          // Logic to check if user is already linked could be improved by returning 'is_linked' flag from backend
-          // For now, we can infer based on the message content or just show a generic "Connect/Open" message
-          if (data.message && data.message.includes('تحديث')) {
-             document.getElementById('telegramBtnText').textContent = 'فتح تيليجرام';
-          }
-
+          document.getElementById('telegramBtnText').textContent = data.message && data.message.includes('تحديث') 
+            ? 'فتح تيليجرام'
+            : 'تفعيل تنبيهات تيليجرام فوراً';
           telegramSection.style.display = 'block';
-          // Hide form after success to focus on next steps
-          form.style.display = 'none';
-          document.querySelector('.subtitle').textContent = 'تم تسجيل طلبك بنجاح';
-          
-          if (resetSection) {
-            resetSection.style.display = 'block';
-            document.getElementById('resetBtn').onclick = () => window.location.reload();
-          }
+      }
+      
+      if (receiveEmailChecked) {
+          subtitle.textContent = receiveTelegramChecked 
+            ? 'تم إرسال رسالة التفعيل. يرجى التحقق من بريدك الإلكتروني أو تفعيل تيليجرام فوراً'
+            : 'تم إرسال رسالة التفعيل. يرجى التحقق من بريدك الإلكتروني';
+      } else if (receiveTelegramChecked) {
+          subtitle.textContent = 'تم تسجيل طلبك. يمكنك تفعيل تنبيهات تيليجرام فوراً';
+      } else {
+          subtitle.textContent = data.message || 'تم الاشتراك بنجاح';
+      }
+      
+      if (resetSection) {
+        resetSection.style.display = 'block';
+        document.getElementById('resetBtn').onclick = () => window.location.reload();
       }
       
     } else {

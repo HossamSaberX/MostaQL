@@ -31,7 +31,12 @@ async def subscribe(
     """
     service = SubscriptionService(db)
     try:
-        result = service.subscribe(data.email, data.category_ids)
+        result = service.subscribe(
+            data.email, 
+            data.category_ids,
+            receive_email=data.receive_email,
+            receive_telegram=data.receive_telegram
+        )
     except SubscriptionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     except Exception as exc:

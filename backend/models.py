@@ -14,12 +14,16 @@ class SubscribeRequest(BaseModel):
         min_items=1, 
         description="List of category IDs to subscribe to"
     )
+    receive_email: bool = Field(default=True, description="Receive email notifications")
+    receive_telegram: bool = Field(default=True, description="Receive Telegram notifications")
     
     class Config:
         json_schema_extra = {
             "example": {
                 "email": "user@example.com",
-                "category_ids": [1, 2]
+                "category_ids": [1, 2],
+                "receive_email": True,
+                "receive_telegram": True
             }
         }
 

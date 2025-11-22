@@ -25,6 +25,7 @@ def _get_users_for_category(category_id: int, db) -> List[User]:
             .filter(
                 UserCategory.category_id == category_id,
                 User.unsubscribed.is_(False),
+                User.verified.is_(True),
             )
             .all()
     )
@@ -112,7 +113,7 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
             if user.id not in notification_rows:
                 continue
             
-            if user.telegram_chat_id:
+            if user.receive_telegram and user.telegram_chat_id:
                 msg_content = "\n".join([
                     f"\u200F• <a href=\"{escape(j['url'])}\">{escape(j['title'])}</a>" 
                     for j in job_payloads
@@ -123,8 +124,8 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
                 if success:
                     sent_telegram += 1
 
-        verified_users = [u for u in users if u.verified]
-        tasks = _build_email_tasks(verified_users, category.name, new_jobs, notification_rows)
+        email_users = [u for u in users if u.receive_email]
+        tasks = _build_email_tasks(email_users, category.name, new_jobs, notification_rows)
         for task in tasks:
             email_task_queue.enqueue(task)
 
