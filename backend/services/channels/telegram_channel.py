@@ -49,6 +49,22 @@ class TelegramChannel(NotificationChannel):
             response.raise_for_status()
             logger.info(f"Telegram message sent to chat_id: {recipient}")
             return True
+        except requests.exceptions.HTTPError as e:
+            # Check if error is due to HTML parsing (Bad Request: can't parse entities)
+            if response.status_code == 400 and "parse" in response.text.lower():
+                logger.warning(f"Telegram HTML parse error: {response.text}. Retrying as plain text.")
+                payload["parse_mode"] = "" # Disable HTML
+                try:
+                    response = requests.post(url, json=payload, timeout=10)
+                    response.raise_for_status()
+                    logger.info(f"Telegram message sent as plain text to chat_id: {recipient}")
+                    return True
+                except Exception as e2:
+                    logger.error(f"Retry failed: {e2}")
+                    return False
+            
+            logger.error(f"Telegram send failed for chat_id {recipient}: {e}")
+            return False
         except requests.exceptions.Timeout:
             logger.error(f"Telegram send timeout for chat_id: {recipient}")
             return False

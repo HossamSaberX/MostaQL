@@ -53,6 +53,16 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
             telegram.send(chat_id, "ℹ️ معلومة", "حسابك غير مرتبط بالفعل.")
         return {"status": "ok"}
     
+    if text == "/start" or text == "/help":
+        telegram.send(
+            chat_id,
+            "🤖 أهلاً بك!",
+            "لربط حسابك، يرجى استخدام الزر الموجود في الموقع بعد الاشتراك.\n"
+            "لا يمكنك ربط الحساب يدوياً من هنا.\n\n"
+            "إذا كنت مشتركاً بالفعل، اذهب إلى صفحة الاشتراك وأعد إدخال بريدك لتظهر لك خيارات الربط."
+        )
+        return {"status": "ok"}
+
     if text.startswith("/start "):
         token = text.split(" ", 1)[1].strip()
         user = db.query(User).filter(User.token == token).first()
