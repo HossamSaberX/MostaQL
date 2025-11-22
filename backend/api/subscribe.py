@@ -51,6 +51,6 @@ async def subscribe(
     return SubscribeResponse(
         message=result.message, 
         email=result.user.email,
-        token=result.token if result.send_verification else None
+        token=result.token
     )
 

@@ -113,13 +113,26 @@ form.addEventListener('submit', async (event) => {
       // Show Telegram button if token is present
       const telegramSection = document.getElementById('telegramSection');
       const telegramBtn = document.getElementById('telegramBtn');
+      const resetSection = document.getElementById('resetSection');
       
       if (data.token && typeof telegramBotUsername !== 'undefined' && telegramBotUsername) {
           telegramBtn.href = `https://t.me/${telegramBotUsername}?start=${data.token}`;
+          
+          // Logic to check if user is already linked could be improved by returning 'is_linked' flag from backend
+          // For now, we can infer based on the message content or just show a generic "Connect/Open" message
+          if (data.message && data.message.includes('تحديث')) {
+             document.getElementById('telegramBtnText').textContent = 'فتح تيليجرام';
+          }
+
           telegramSection.style.display = 'block';
           // Hide form after success to focus on next steps
           form.style.display = 'none';
           document.querySelector('.subtitle').textContent = 'تم تسجيل طلبك بنجاح';
+          
+          if (resetSection) {
+            resetSection.style.display = 'block';
+            document.getElementById('resetBtn').onclick = () => window.location.reload();
+          }
       }
       
     } else {

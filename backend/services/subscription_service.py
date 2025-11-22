@@ -75,14 +75,29 @@ class SubscriptionService:
     ) -> SubscriptionResult:
         self._replace_user_categories(user.id, category_ids)
 
+        # Case 1: User is verified and active (just updating preferences)
         if user.verified and not user.unsubscribed:
             self.db.commit()
             return SubscriptionResult(
                 user=user,
                 message="تم تحديث تفضيلاتك بنجاح",
                 send_verification=False,
+                token=user.token # Always return token for Telegram button
             )
 
+        # Case 2: User was unsubscribed, now resubscribing (Welcome back!)
+        if user.verified and user.unsubscribed:
+            user.unsubscribed = False
+            # Don't change token, don't re-verify email
+            self.db.commit()
+            return SubscriptionResult(
+                user=user,
+                message="مرحباً بعودتك! تم إعادة تفعيل اشتراكك بنجاح.",
+                send_verification=False, # No need to verify again
+                token=user.token # Always return token for Telegram button
+            )
+
+        # Case 3: User is NOT verified (Re-send verification)
         user.unsubscribed = False
         user.token = generate_token()
         user.token_issued_at = datetime.utcnow()
