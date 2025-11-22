@@ -25,6 +25,8 @@ class User(Base):
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
     token_issued_at = Column(TIMESTAMP, default=datetime.utcnow)
     unsubscribed = Column(Boolean, default=False)
+    receive_email = Column(Boolean, default=True)
+    receive_telegram = Column(Boolean, default=True)
     telegram_chat_id = Column(String(64), nullable=True, unique=True)
     last_notified_at = Column(TIMESTAMP, nullable=True)
     

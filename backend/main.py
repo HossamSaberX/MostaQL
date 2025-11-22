@@ -24,6 +24,8 @@ from backend.api import subscribe, verify, health, test, webhook
 from backend.utils.limiter import limiter
 from backend.services.notification_queue import email_task_queue
 from backend.config import settings
+from alembic.config import Config
+from alembic import command
 
 scheduler = None
 
@@ -39,6 +41,10 @@ async def lifespan(app: FastAPI):
     
     app_logger.info("Starting email task queue...")
     email_task_queue.start()
+    
+    app_logger.info("Running database migrations...")
+    alembic_cfg = Config("alembic.ini")
+    command.upgrade(alembic_cfg, "head")
     
     app_logger.info("Initializing database...")
     init_db()
