@@ -71,7 +71,10 @@ app = FastAPI(
     title="Mostaql Job Notifier",
     description="Automated job notification service for Mostaql freelancers",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url=None if settings.environment == "production" else "/docs",
+    redoc_url=None if settings.environment == "production" else "/redoc",
+    openapi_url=None if settings.environment == "production" else "/openapi.json",
 )
 
 app.state.limiter = limiter
@@ -89,8 +92,10 @@ app.add_middleware(
 app.include_router(subscribe.router, prefix="/api", tags=["subscribe"])
 app.include_router(verify.router, prefix="/api", tags=["verify"])
 app.include_router(health.router, prefix="/api", tags=["health"])
-app.include_router(test.router, prefix="/api/test", tags=["testing"])
 app.include_router(webhook.router, prefix="/api", tags=["webhook"])
+
+if settings.environment != "production":
+    app.include_router(test.router, prefix="/api/test", tags=["testing"])
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
