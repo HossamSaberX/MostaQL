@@ -29,6 +29,25 @@
                     </svg>
                     <span>تيليجرام</span>
                 </label>
+                
+                <div class="notification-option filter-option" title="تصفية الوظائف حسب معدل توظيف صاحب المشروع">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M16 6L18.29 8.29L13.41 13.17L9.41 9.17L2 16.59L3.41 18L9.41 12L13.41 16L19.71 9.71L22 12V6H16Z" fill="currentColor"/>
+                    </svg>
+                    <span>معدل توظيف &ge;</span>
+                    <input
+                        type="number"
+                        id="minHiringRate"
+                        name="min_hiring_rate"
+                        class="inline-number-input"
+                        min="0"
+                        max="100"
+                        step="5"
+                        placeholder="0"
+                        dir="ltr"
+                    >
+                    <span class="unit">%</span>
+                </div>
             </div>
         </div>
         
@@ -100,32 +119,29 @@
             
             const data = await response.json();
             
-            document.getElementById('receiveEmail').checked = data.receive_email ?? true;
-            document.getElementById('receiveTelegram').checked = data.receive_telegram ?? true;
+            document.getElementById('receiveEmail').checked = data.receive_email;
+            document.getElementById('receiveTelegram').checked = data.receive_telegram;
+            if (data.min_hiring_rate !== null) {
+                document.getElementById('minHiringRate').value = data.min_hiring_rate;
+            }
             
             if (data.unsubscribed) {
-                statusBadge.className = 'status-badge inactive';
-                statusText.textContent = 'غير مشترك';
-                statusBadge.classList.add('show');
-                form.style.display = 'none';
+                showError('أنت غير مشترك حالياً');
                 unsubscribeAllBtn.style.display = 'none';
-            } else {
-                statusBadge.className = 'status-badge active';
-                statusText.textContent = 'نشط';
-                statusBadge.classList.add('show');
             }
         } catch (err) {
+            showError('حدث خطأ أثناء تحميل التفضيلات');
             console.error(err);
-            showError('تعذر تحميل التفضيلات');
         }
     }
     
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        hideMessages();
         
         const receiveEmail = document.getElementById('receiveEmail').checked;
         const receiveTelegram = document.getElementById('receiveTelegram').checked;
+        const minHiringRateInput = document.getElementById('minHiringRate').value;
+        const minHiringRate = minHiringRateInput ? parseFloat(minHiringRateInput) : null;
         
         if (!receiveEmail && !receiveTelegram) {
             showError('يجب اختيار طريقة إشعار واحدة على الأقل');
@@ -134,15 +150,20 @@
         
         saveBtn.disabled = true;
         saveBtn.textContent = 'جاري الحفظ...';
+        statusMessage.style.display = 'none';
+        errorMessage.style.display = 'none';
         
         try {
             const response = await fetch(`${API_BASE_URL}/preferences`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                },
                 body: JSON.stringify({
-                    token: token,
+                    token,
                     receive_email: receiveEmail,
                     receive_telegram: receiveTelegram,
+                    min_hiring_rate: minHiringRate
                 }),
             });
             

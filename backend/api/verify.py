@@ -145,6 +145,7 @@ async def get_preferences(token: str, db: Session = Depends(get_db)):
             "receive_telegram": user.receive_telegram,
             "unsubscribed": user.unsubscribed,
             "verified": user.verified,
+            "min_hiring_rate": user.min_hiring_rate,
         })
         
     except HTTPException:
@@ -176,14 +177,16 @@ async def update_preferences(
         
         user.receive_email = data.receive_email
         user.receive_telegram = data.receive_telegram
+        user.min_hiring_rate = data.min_hiring_rate
         db.commit()
         
-        logger.info(f"Preferences updated for {user.email}: email={data.receive_email}, telegram={data.receive_telegram}")
+        logger.info(f"Preferences updated for {user.email}: email={data.receive_email}, telegram={data.receive_telegram}, rate={data.min_hiring_rate}")
         
         return JSONResponse(content={
             "message": "تم حفظ التفضيلات بنجاح",
             "receive_email": data.receive_email,
             "receive_telegram": data.receive_telegram,
+            "min_hiring_rate": data.min_hiring_rate,
         })
         
     except HTTPException:

@@ -28,6 +28,7 @@ class User(Base):
     receive_email = Column(Boolean, default=True)
     receive_telegram = Column(Boolean, default=True)
     telegram_chat_id = Column(String(64), nullable=True, unique=True)
+    min_hiring_rate = Column(Float, nullable=True)
     last_notified_at = Column(TIMESTAMP, nullable=True)
     
     categories = relationship("UserCategory", back_populates="user", cascade="all, delete-orphan")
@@ -75,6 +76,7 @@ class Job(Base):
     title = Column(Text, nullable=False)
     url = Column(Text, unique=True, nullable=False)
     content_hash = Column(String(64), nullable=False)
+    hiring_rate = Column(Float, nullable=True)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
     scraped_at = Column(TIMESTAMP, default=datetime.utcnow)
     
@@ -84,6 +86,7 @@ class Job(Base):
     __table_args__ = (
         Index('idx_jobs_category', 'category_id', 'scraped_at'),
         Index('idx_jobs_hash', 'content_hash'),
+        Index('idx_jobs_hiring_rate', 'hiring_rate'),
     )
 
 

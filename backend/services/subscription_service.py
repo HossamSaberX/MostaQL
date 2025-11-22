@@ -40,7 +40,8 @@ class SubscriptionService:
         email: str, 
         category_ids: List[int],
         receive_email: bool = True,
-        receive_telegram: bool = True
+        receive_telegram: bool = True,
+        min_hiring_rate: Optional[float] = None
     ) -> SubscriptionResult:
         normalized_ids = self._normalize_category_ids(category_ids)
         if not normalized_ids:
@@ -54,9 +55,9 @@ class SubscriptionService:
 
         user = self.db.query(User).filter(User.email == email).first()
         if user:
-            return self._handle_existing_user(user, normalized_ids, receive_email, receive_telegram)
+            return self._handle_existing_user(user, normalized_ids, receive_email, receive_telegram, min_hiring_rate)
 
-        return self._create_new_user(email, normalized_ids, receive_email, receive_telegram)
+        return self._create_new_user(email, normalized_ids, receive_email, receive_telegram, min_hiring_rate)
 
     def _normalize_category_ids(self, category_ids: List[int]) -> List[int]:
         return sorted({int(category_id) for category_id in category_ids})
@@ -81,10 +82,12 @@ class SubscriptionService:
         category_ids: List[int],
         receive_email: bool,
         receive_telegram: bool,
+        min_hiring_rate: Optional[float] = None,
     ) -> SubscriptionResult:
         self._replace_user_categories(user.id, category_ids)
         user.receive_email = receive_email
         user.receive_telegram = receive_telegram
+        user.min_hiring_rate = min_hiring_rate
 
         # Case 1: User is verified and active (just updating preferences)
         if user.verified and not user.unsubscribed:
@@ -130,6 +133,7 @@ class SubscriptionService:
         category_ids: List[int],
         receive_email: bool,
         receive_telegram: bool,
+        min_hiring_rate: Optional[float] = None,
     ) -> SubscriptionResult:
         token = generate_token()
         user = User(
@@ -140,6 +144,7 @@ class SubscriptionService:
             unsubscribed=False,
             receive_email=receive_email,
             receive_telegram=receive_telegram,
+            min_hiring_rate=min_hiring_rate,
         )
         self.db.add(user)
         self.db.flush()

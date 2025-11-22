@@ -16,6 +16,7 @@ class SubscribeRequest(BaseModel):
     )
     receive_email: bool = Field(default=True, description="Receive email notifications")
     receive_telegram: bool = Field(default=True, description="Receive Telegram notifications")
+    min_hiring_rate: Optional[float] = Field(None, ge=0, le=100, description="Minimum hiring rate filter")
     
     class Config:
         json_schema_extra = {
@@ -23,7 +24,8 @@ class SubscribeRequest(BaseModel):
                 "email": "user@example.com",
                 "category_ids": [1, 2],
                 "receive_email": True,
-                "receive_telegram": True
+                "receive_telegram": True,
+                "min_hiring_rate": 50.0
             }
         }
 
@@ -140,4 +142,5 @@ class PreferencesRequest(BaseModel):
     token: str = Field(..., description="User token")
     receive_email: bool = Field(..., description="Receive email notifications")
     receive_telegram: bool = Field(..., description="Receive Telegram notifications")
+    min_hiring_rate: Optional[float] = Field(None, ge=0, le=100, description="Minimum hiring rate filter")
 

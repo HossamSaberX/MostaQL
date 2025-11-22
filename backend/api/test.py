@@ -29,6 +29,61 @@ class TestNotificationRequest(BaseModel):
     jobs: List[dict]
 
 
+class TestJobWithRateRequest(BaseModel):
+    category_id: int
+    title: str
+    url: str
+    hiring_rate: float = None
+
+
+@router.post("/simulate-job")
+async def simulate_job(data: TestJobWithRateRequest, db: Session = Depends(get_db)):
+    """
+    Simulate a new job with a specific hiring rate to test filtering logic.
+    
+    Example:
+    POST /api/test/simulate-job
+    {
+        "category_id": 1,
+        "title": "Test Job with 80% Hiring Rate",
+        "url": "https://mostaql.com/project/test-80",
+        "hiring_rate": 80.0
+    }
+    """
+    category = db.query(Category).filter(Category.id == data.category_id).first()
+    if not category:
+        raise HTTPException(404, "Category not found")
+    
+    # Create fake job
+    job = Job(
+        title=data.title,
+        url=data.url,
+        content_hash=f"test_{data.url}",
+        category_id=data.category_id,
+        hiring_rate=data.hiring_rate
+    )
+    
+    # Check if exists to avoid unique constraint error
+    existing = db.query(Job).filter(Job.url == data.url).first()
+    if existing:
+        db.delete(existing)
+        db.flush()
+        
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    
+    # Trigger notification logic
+    result = process_new_jobs([job], data.category_id)
+    
+    return {
+        "status": "success",
+        "job_id": job.id,
+        "hiring_rate": job.hiring_rate,
+        "notification_result": result
+    }
+
+
 @router.post("/notification")
 async def test_notification(data: TestNotificationRequest, db: Session = Depends(get_db)):
     """

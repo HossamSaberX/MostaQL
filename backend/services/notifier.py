@@ -1,7 +1,7 @@
 """
 Job notification service.
 """
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from html import escape
 from loguru import logger
 
@@ -90,9 +90,25 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
             logger.info(f"No verified subscribers for category {category.name}")
             return {"queued_emails": 0, "notifications": 0, "sent_telegram": 0}
 
+        # 1. Filter jobs per user and create notifications
+        user_job_map: Dict[int, List[Job]] = {}
         notification_rows: Dict[int, List[int]] = {}
-        for job in new_jobs:
-            for user in users:
+        
+        for user in users:
+            filtered_jobs = []
+            for job in new_jobs:
+                # Filter by hiring rate
+                if user.min_hiring_rate is not None:
+                    if job.hiring_rate is None or job.hiring_rate < user.min_hiring_rate:
+                        continue
+                filtered_jobs.append(job)
+            
+            if not filtered_jobs:
+                continue
+                
+            user_job_map[user.id] = filtered_jobs
+            
+            for job in filtered_jobs:
                 notification = Notification(
                     user_id=user.id,
                     job_id=job.id,
@@ -100,20 +116,22 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
                 )
                 db.add(notification)
                 db.flush()
-
                 notification_rows.setdefault(user.id, []).append(notification.id)
                 queued_notifications += 1
 
         db.commit()
 
+        # 2. Send Telegram
         telegram_channel = TelegramChannel()
-        job_payloads = [{"title": job.title, "url": job.url} for job in new_jobs]
         
         for user in users:
-            if user.id not in notification_rows:
+            if user.id not in user_job_map:
                 continue
             
             if user.receive_telegram and user.telegram_chat_id:
+                user_jobs = user_job_map[user.id]
+                job_payloads = [{"title": job.title, "url": job.url} for job in user_jobs]
+                
                 msg_content = "\n".join([
                     f"\u200F• <a href=\"{escape(j['url'])}\">{escape(j['title'])}</a>" 
                     for j in job_payloads
@@ -124,8 +142,26 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
                 if success:
                     sent_telegram += 1
 
-        email_users = [u for u in users if u.receive_email]
-        tasks = _build_email_tasks(email_users, category.name, new_jobs, notification_rows)
+        # 3. Send Emails (Grouped by job set for efficient BCC)
+        tasks = []
+        job_set_users: Dict[Tuple[int, ...], List[User]] = {}
+        
+        for user in users:
+            if user.id not in user_job_map:
+                continue
+            if not user.receive_email:
+                continue
+                
+            job_ids = tuple(sorted(j.id for j in user_job_map[user.id]))
+            job_set_users.setdefault(job_ids, []).append(user)
+            
+        job_map = {j.id: j for j in new_jobs}
+        
+        for job_ids, batch_users in job_set_users.items():
+            batch_jobs = [job_map[jid] for jid in job_ids]
+            batch_tasks = _build_email_tasks(batch_users, category.name, batch_jobs, notification_rows)
+            tasks.extend(batch_tasks)
+
         for task in tasks:
             email_task_queue.enqueue(task)
 

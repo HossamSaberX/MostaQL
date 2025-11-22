@@ -94,6 +94,8 @@ form.addEventListener('submit', async (event) => {
 
   const receiveEmail = document.getElementById('receiveEmail').checked;
   const receiveTelegram = document.getElementById('receiveTelegram').checked;
+  const minHiringRateInput = document.getElementById('minHiringRate').value;
+  const minHiringRate = minHiringRateInput ? parseFloat(minHiringRateInput) : null;
 
   if (!receiveEmail && !receiveTelegram) {
     toggleGlobalAlert(errorMessage, 'يجب اختيار طريقة إشعار واحدة على الأقل');
@@ -101,17 +103,20 @@ form.addEventListener('submit', async (event) => {
   }
 
   submitBtn.disabled = true;
-  submitBtn.textContent = 'جاري الإرسال...';
+  submitBtn.textContent = 'جاري الاشتراك...';
 
   try {
     const response = await fetch(`${API_BASE_URL}/subscribe`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
-        email: emailInput.value.trim(),
+        email: emailInput.value,
         category_ids: selectedCategories,
         receive_email: receiveEmail,
         receive_telegram: receiveTelegram,
+        min_hiring_rate: minHiringRate,
       }),
     });
 
