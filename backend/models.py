@@ -32,13 +32,15 @@ class SubscribeResponse(BaseModel):
     """Response model for subscription"""
     message: str
     email: str
+    status: str = "created"
     token: Optional[str] = None
     
     class Config:
         json_schema_extra = {
             "example": {
                 "message": "تم الاشتراك بنجاح! يرجى التحقق من بريدك الإلكتروني لتأكيد الاشتراك",
-                "email": "user@example.com"
+                "email": "user@example.com",
+                "status": "created"
             }
         }
 

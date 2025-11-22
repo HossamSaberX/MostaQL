@@ -25,6 +25,7 @@ class SubscriptionError(Exception):
 class SubscriptionResult:
     user: User
     message: str
+    status: str = "created"
     send_verification: bool = False
     token: Optional[str] = None
 
@@ -91,6 +92,7 @@ class SubscriptionService:
             return SubscriptionResult(
                 user=user,
                 message="تم تحديث تفضيلاتك بنجاح",
+                status="updated",
                 send_verification=False,
                 token=user.token
             )
@@ -102,6 +104,7 @@ class SubscriptionService:
             return SubscriptionResult(
                 user=user,
                 message="مرحباً بعودتك! تم إعادة تفعيل اشتراكك بنجاح.",
+                status="reactivated",
                 send_verification=False,
                 token=user.token
             )
@@ -116,6 +119,7 @@ class SubscriptionService:
         return SubscriptionResult(
             user=user,
             message="تم إرسال رسالة التفعيل. يرجى التحقق من بريدك الإلكتروني.",
+            status="created",
             send_verification=True,
             token=user.token,
         )
@@ -150,6 +154,7 @@ class SubscriptionService:
         return SubscriptionResult(
             user=user,
             message="تم إرسال رسالة التفعيل. يرجى التحقق من بريدك الإلكتروني.",
+            status="created",
             send_verification=True,
             token=token,
         )

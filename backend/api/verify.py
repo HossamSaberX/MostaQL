@@ -141,8 +141,8 @@ async def get_preferences(token: str, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="رابط غير صالح")
         
         return JSONResponse(content={
-            "receive_email": user.receive_email if hasattr(user, 'receive_email') else True,
-            "receive_telegram": user.receive_telegram if hasattr(user, 'receive_telegram') else True,
+            "receive_email": user.receive_email,
+            "receive_telegram": user.receive_telegram,
             "unsubscribed": user.unsubscribed,
             "verified": user.verified,
         })

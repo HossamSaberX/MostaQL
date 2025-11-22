@@ -2,15 +2,15 @@
 
 {% block content %}
 <div class="card">
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-        <h1 style="margin: 0;">إدارة التفضيلات</h1>
+    <div class="preferences-header">
+        <h1>إدارة التفضيلات</h1>
         <div class="status-badge" id="statusBadge" style="display: none;">
             <span id="statusText">جاري التحميل...</span>
         </div>
     </div>
     
-    <div id="statusMessage" class="alert success" style="display: none;"></div>
-    <div id="errorMessage" class="alert error" style="display: none;"></div>
+    <div id="statusMessage" class="alert success"></div>
+    <div id="errorMessage" class="alert error"></div>
     
     <form id="preferencesForm" novalidate>
         <div class="form-group notification-group">
@@ -37,7 +37,7 @@
         </button>
     </form>
     
-    <button type="button" class="danger-btn" id="unsubscribeAllBtn" style="margin-top: 12px;">
+    <button type="button" class="danger-btn unsubscribe-btn" id="unsubscribeAllBtn">
         إلغاء الاشتراك من كل شيء
     </button>
     
@@ -106,13 +106,13 @@
             if (data.unsubscribed) {
                 statusBadge.className = 'status-badge inactive';
                 statusText.textContent = 'غير مشترك';
-                statusBadge.style.display = 'inline-block';
+                statusBadge.classList.add('show');
                 form.style.display = 'none';
                 unsubscribeAllBtn.style.display = 'none';
             } else {
                 statusBadge.className = 'status-badge active';
                 statusText.textContent = 'نشط';
-                statusBadge.style.display = 'inline-block';
+                statusBadge.classList.add('show');
             }
         } catch (err) {
             console.error(err);
@@ -187,7 +187,7 @@
             if (response.ok) {
                 statusBadge.className = 'status-badge inactive';
                 statusText.textContent = 'غير مشترك';
-                statusBadge.style.display = 'inline-block';
+                statusBadge.classList.add('show');
                 form.style.display = 'none';
                 unsubscribeAllBtn.style.display = 'none';
                 showSuccess('تم إلغاء الاشتراك بنجاح');

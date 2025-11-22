@@ -127,11 +127,11 @@ form.addEventListener('submit', async (event) => {
       
       form.style.display = 'none';
       
-      const isUpdate = data.message && (data.message.includes('تحديث') || data.message.includes('عودة'));
+      const isUpdate = (data.status === 'updated' || data.status === 'reactivated') || 
+                       (data.message && (data.message.includes('تحديث') || data.message.includes('عودة')));
       
       if (isUpdate) {
           toggleGlobalAlert(successMessage, data.message);
-          subtitle.textContent = data.message;
           
           if (receiveTelegramChecked && data.token && typeof telegramBotUsername !== 'undefined' && telegramBotUsername) {
               telegramBtn.href = `https://t.me/${telegramBotUsername}?start=${data.token}`;

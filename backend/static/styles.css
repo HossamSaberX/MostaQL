@@ -367,13 +367,32 @@ form button:disabled {
     color: var(--brand-primary);
 }
 
+.preferences-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.preferences-header h1 {
+    margin: 0;
+}
+
 .status-badge {
-    display: inline-block;
+    display: none;
     padding: 4px 12px;
     border-radius: 20px;
     font-size: 12px;
     font-weight: 600;
     white-space: nowrap;
+}
+
+.status-badge.show {
+    display: inline-block;
+}
+
+.unsubscribe-btn {
+    margin-top: 12px;
 }
 
 .status-badge.active {

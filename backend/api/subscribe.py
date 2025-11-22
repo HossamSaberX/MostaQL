@@ -56,6 +56,7 @@ async def subscribe(
     return SubscribeResponse(
         message=result.message, 
         email=result.user.email,
+        status=result.status,
         token=result.token
     )
 
