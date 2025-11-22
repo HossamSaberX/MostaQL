@@ -109,6 +109,19 @@ form.addEventListener('submit', async (event) => {
     if (response.ok) {
       toggleGlobalAlert(successMessage, data.message || 'تم الاشتراك بنجاح');
       form.reset();
+      
+      // Show Telegram button if token is present
+      const telegramSection = document.getElementById('telegramSection');
+      const telegramBtn = document.getElementById('telegramBtn');
+      
+      if (data.token && typeof telegramBotUsername !== 'undefined' && telegramBotUsername) {
+          telegramBtn.href = `https://t.me/${telegramBotUsername}?start=${data.token}`;
+          telegramSection.style.display = 'block';
+          // Hide form after success to focus on next steps
+          form.style.display = 'none';
+          document.querySelector('.subtitle').textContent = 'تم تسجيل طلبك بنجاح';
+      }
+      
     } else {
       toggleGlobalAlert(errorMessage, data.detail || 'حدث خطأ أثناء الاشتراك');
     }

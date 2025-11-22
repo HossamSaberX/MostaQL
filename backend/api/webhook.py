@@ -36,11 +36,21 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
         logger.warning("Telegram webhook: No chat_id in message")
         return {"status": "ok"}
     
+    telegram = TelegramChannel()
+    
+    if text == "/stop" or text == "/unsubscribe":
+        user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
+        if user:
+            user.telegram_chat_id = None
+            db.commit()
+            telegram.send(chat_id, "✅ تم إلغاء الربط", "تم إلغاء ربط حسابك. لن تصلك إشعارات على تليجرام بعد الآن.")
+        else:
+            telegram.send(chat_id, "ℹ️ معلومة", "حسابك غير مرتبط بالفعل.")
+        return {"status": "ok"}
+    
     if text.startswith("/start "):
         token = text.split(" ", 1)[1].strip()
-        
         user = db.query(User).filter(User.token == token).first()
-        telegram = TelegramChannel()
         
         if user:
             try:

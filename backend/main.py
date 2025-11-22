@@ -99,7 +99,11 @@ templates = Jinja2Templates(directory=templates_dir)
 async def landing_page(request: Request):
     return templates.TemplateResponse(
         "subscribe.html",
-        {"request": request, "title": "تنبيهات وظائف مستقل"}
+        {
+            "request": request, 
+            "title": "تنبيهات وظائف مستقل",
+            "telegram_bot_username": settings.telegram_bot_username
+        }
     )
 
 
@@ -110,7 +114,8 @@ async def verify_page(request: Request):
         {
             "request": request,
             "title": "تأكيد البريد الإلكتروني",
-            "page_wrapper_class": "status-wrapper"
+            "page_wrapper_class": "status-wrapper",
+            "telegram_bot_username": settings.telegram_bot_username
         }
     )
 

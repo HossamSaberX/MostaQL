@@ -66,7 +66,7 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
         
         if user.verified:
             logger.info(f"User already verified: {user.email}")
-            return RedirectResponse(url=get_frontend_url("verify.html?status=already_verified"))
+            return RedirectResponse(url=get_frontend_url(f"verify.html?status=already_verified&token={user.token}"))
         
         issued_at = user.token_issued_at or user.created_at
         if issued_at and is_token_expired(issued_at, settings.verification_token_expiry_hours):
@@ -77,7 +77,7 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
         db.commit()
         
         logger.info(f"User verified successfully: {user.email}")
-        return RedirectResponse(url=get_frontend_url("verify.html?status=success"))
+        return RedirectResponse(url=get_frontend_url(f"verify.html?status=success&token={user.token}"))
         
     except Exception as e:
         logger.error(f"Verify error for token {token[:10]}...: {e}")

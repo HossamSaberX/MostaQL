@@ -24,7 +24,6 @@ def _get_users_for_category(category_id: int, db) -> List[User]:
             .join(UserCategory)
             .filter(
                 UserCategory.category_id == category_id,
-                User.verified.is_(True),
                 User.unsubscribed.is_(False),
             )
             .all()
@@ -124,7 +123,8 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
                 if success:
                     sent_telegram += 1
 
-        tasks = _build_email_tasks(users, category.name, new_jobs, notification_rows)
+        verified_users = [u for u in users if u.verified]
+        tasks = _build_email_tasks(verified_users, category.name, new_jobs, notification_rows)
         for task in tasks:
             email_task_queue.enqueue(task)
 

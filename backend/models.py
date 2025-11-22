@@ -28,6 +28,7 @@ class SubscribeResponse(BaseModel):
     """Response model for subscription"""
     message: str
     email: str
+    token: Optional[str] = None
     
     class Config:
         json_schema_extra = {
