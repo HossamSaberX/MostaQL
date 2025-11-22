@@ -1,16 +1,20 @@
 """
 Test endpoints for manual scraper triggering and debugging
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
+from typing import List
 from loguru import logger
 import requests
 from bs4 import BeautifulSoup
 
 from backend.scheduler import run_scraper_job
-from backend.database import get_db, Category
+from backend.database import get_db, Job, Category
 from backend.services.scraper import quick_check_category, scrape_category_with_logging, _job_exists_in_db
+from backend.services.notifier import process_new_jobs
+
+router = APIRouter()
 
 
 class TestEmailRequest(BaseModel):
@@ -19,7 +23,52 @@ class TestEmailRequest(BaseModel):
     body: str
     provider: str = "gmail"
 
-router = APIRouter()
+
+class TestNotificationRequest(BaseModel):
+    category_id: int
+    jobs: List[dict]
+
+
+@router.post("/notification")
+async def test_notification(data: TestNotificationRequest, db: Session = Depends(get_db)):
+    """
+    Test notification system by creating fake jobs.
+    
+    Example:
+    POST /api/test/notification
+    {
+        "category_id": 1,
+        "jobs": [
+            {"title": "مطلوب مبرمج Python", "url": "https://mostaql.com/project/test1"},
+            {"title": "تطوير موقع", "url": "https://mostaql.com/project/test2"}
+        ]
+    }
+    """
+    category = db.query(Category).filter(Category.id == data.category_id).first()
+    if not category:
+        raise HTTPException(404, "Category not found")
+    
+    test_jobs = []
+    for job_data in data.jobs:
+        job = Job(
+            title=job_data["title"],
+            url=job_data["url"],
+            content_hash=f"test_{job_data['url']}",
+            category_id=data.category_id
+        )
+        db.add(job)
+        db.flush()
+        test_jobs.append(job)
+    
+    db.commit()
+    result = process_new_jobs(test_jobs, data.category_id)
+    
+    return {
+        "status": "success",
+        "category": category.name,
+        "jobs_created": len(test_jobs),
+        **result
+    }
 
 
 @router.post("/trigger-scraper")
