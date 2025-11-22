@@ -126,24 +126,36 @@ form.addEventListener('submit', async (event) => {
       const subtitle = document.querySelector('.subtitle');
       
       form.style.display = 'none';
-      toggleGlobalAlert(successMessage, '');
       
-      if (receiveTelegramChecked && data.token && typeof telegramBotUsername !== 'undefined' && telegramBotUsername) {
-          telegramBtn.href = `https://t.me/${telegramBotUsername}?start=${data.token}`;
-          document.getElementById('telegramBtnText').textContent = data.message && data.message.includes('تحديث') 
-            ? 'فتح تيليجرام'
-            : 'تفعيل تنبيهات تيليجرام فوراً';
-          telegramSection.style.display = 'block';
-      }
+      const isUpdate = data.message && (data.message.includes('تحديث') || data.message.includes('عودة'));
       
-      if (receiveEmailChecked) {
-          subtitle.textContent = receiveTelegramChecked 
-            ? 'تم إرسال رسالة التفعيل. يرجى التحقق من بريدك الإلكتروني أو تفعيل تيليجرام فوراً'
-            : 'تم إرسال رسالة التفعيل. يرجى التحقق من بريدك الإلكتروني';
-      } else if (receiveTelegramChecked) {
-          subtitle.textContent = 'تم تسجيل طلبك. يمكنك تفعيل تنبيهات تيليجرام فوراً';
+      if (isUpdate) {
+          toggleGlobalAlert(successMessage, data.message);
+          subtitle.textContent = data.message;
+          
+          if (receiveTelegramChecked && data.token && typeof telegramBotUsername !== 'undefined' && telegramBotUsername) {
+              telegramBtn.href = `https://t.me/${telegramBotUsername}?start=${data.token}`;
+              document.getElementById('telegramBtnText').textContent = 'فتح تيليجرام';
+              telegramSection.style.display = 'block';
+          }
       } else {
-          subtitle.textContent = data.message || 'تم الاشتراك بنجاح';
+          toggleGlobalAlert(successMessage, '');
+          
+          if (receiveTelegramChecked && data.token && typeof telegramBotUsername !== 'undefined' && telegramBotUsername) {
+              telegramBtn.href = `https://t.me/${telegramBotUsername}?start=${data.token}`;
+              document.getElementById('telegramBtnText').textContent = 'تفعيل تنبيهات تيليجرام فوراً';
+              telegramSection.style.display = 'block';
+          }
+          
+          if (receiveEmailChecked) {
+              subtitle.textContent = receiveTelegramChecked 
+                ? 'تم إرسال رسالة التفعيل. يرجى التحقق من بريدك الإلكتروني أو تفعيل تيليجرام فوراً'
+                : 'تم إرسال رسالة التفعيل. يرجى التحقق من بريدك الإلكتروني';
+          } else if (receiveTelegramChecked) {
+              subtitle.textContent = 'تم تسجيل طلبك. يمكنك تفعيل تنبيهات تيليجرام فوراً';
+          } else {
+              subtitle.textContent = data.message || 'تم الاشتراك بنجاح';
+          }
       }
       
       if (resetSection) {

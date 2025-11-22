@@ -138,6 +138,18 @@ async def unsubscribe_page(request: Request):
     )
 
 
+@app.get("/preferences.html", response_class=HTMLResponse)
+async def preferences_page(request: Request):
+    return templates.TemplateResponse(
+        "preferences.html",
+        {
+            "request": request,
+            "title": "إدارة التفضيلات",
+            "telegram_bot_username": settings.telegram_bot_username
+        }
+    )
+
+
 @app.get("/unsubscribe-request.html", response_class=HTMLResponse)
 async def unsubscribe_request_page(request: Request):
     return templates.TemplateResponse(

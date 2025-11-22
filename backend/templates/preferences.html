@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+        <h1 style="margin: 0;">إدارة التفضيلات</h1>
+        <div class="status-badge" id="statusBadge" style="display: none;">
+            <span id="statusText">جاري التحميل...</span>
+        </div>
+    </div>
+    
+    <div id="statusMessage" class="alert success" style="display: none;"></div>
+    <div id="errorMessage" class="alert error" style="display: none;"></div>
+    
+    <form id="preferencesForm" novalidate>
+        <div class="form-group notification-group">
+            <div class="notification-inline">
+                <label class="notification-option">
+                    <input type="checkbox" id="receiveEmail" name="receive_email">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M20 4H4C2.9 4 2.01 4.9 2.01 6L2 18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V6C22 4.9 21.1 4 20 4ZM20 8L12 13L4 8V6L12 11L20 6V8Z" fill="currentColor"/>
+                    </svg>
+                    <span>البريد الإلكتروني</span>
+                </label>
+                <label class="notification-option">
+                    <input type="checkbox" id="receiveTelegram" name="receive_telegram">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M20.665 3.717L2.335 10.786C1.084 11.286 1.089 11.984 2.103 12.295L6.81 13.764L17.704 6.893C18.22 6.58 18.693 6.753 18.307 7.096L9.482 15.053V15.052L9.481 15.054L9.156 19.916C9.633 19.916 9.843 19.699 10.11 19.44L12.43 17.187L17.257 20.753C18.147 21.244 18.787 20.991 19.009 19.93L22.18 5.004C22.505 3.48 21.691 2.789 20.665 3.717Z" fill="currentColor"/>
+                    </svg>
+                    <span>تيليجرام</span>
+                </label>
+            </div>
+        </div>
+        
+        <button type="submit" class="primary-btn" id="saveBtn">
+            حفظ التفضيلات
+        </button>
+    </form>
+    
+    <button type="button" class="danger-btn" id="unsubscribeAllBtn" style="margin-top: 12px;">
+        إلغاء الاشتراك من كل شيء
+    </button>
+    
+    <div class="back-link">
+        <a href="/" class="helper-text">← العودة للصفحة الرئيسية</a>
+    </div>
+</div>
+
+<div id="confirmModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h3>تأكيد الإلغاء</h3>
+        <p>هل أنت متأكد من إلغاء الاشتراك من كل شيء؟</p>
+        <div class="modal-actions">
+            <button type="button" class="modal-btn-cancel" id="modalCancel">إلغاء</button>
+            <button type="button" class="modal-btn-confirm" id="modalConfirm">نعم، إلغاء الاشتراك</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const API_BASE_URL = window.location.port === '5500' || window.location.port === '5501'
+        ? 'http://localhost:8000/api'
+        : `${window.location.origin}/api`;
+    
+    let token = '{{ token or "" }}';
+    if (!token) {
+        token = new URLSearchParams(window.location.search).get('token');
+    }
+    if (!token) {
+        const pathMatch = window.location.pathname.match(/\/unsubscribe\/([^\/]+)/);
+        if (pathMatch) {
+            token = pathMatch[1];
+        }
+    }
+    
+    const statusMessage = document.getElementById('statusMessage');
+    const errorMessage = document.getElementById('errorMessage');
+    const statusBadge = document.getElementById('statusBadge');
+    const statusText = document.getElementById('statusText');
+    const form = document.getElementById('preferencesForm');
+    const saveBtn = document.getElementById('saveBtn');
+    const unsubscribeAllBtn = document.getElementById('unsubscribeAllBtn');
+    
+    if (!token) {
+        showError('رابط غير صالح');
+        form.style.display = 'none';
+        unsubscribeAllBtn.style.display = 'none';
+    } else {
+        loadPreferences();
+    }
+    
+    async function loadPreferences() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/preferences/${token}`);
+            if (!response.ok) {
+                throw new Error('Failed to load preferences');
+            }
+            
+            const data = await response.json();
+            
+            document.getElementById('receiveEmail').checked = data.receive_email ?? true;
+            document.getElementById('receiveTelegram').checked = data.receive_telegram ?? true;
+            
+            if (data.unsubscribed) {
+                statusBadge.className = 'status-badge inactive';
+                statusText.textContent = 'غير مشترك';
+                statusBadge.style.display = 'inline-block';
+                form.style.display = 'none';
+                unsubscribeAllBtn.style.display = 'none';
+            } else {
+                statusBadge.className = 'status-badge active';
+                statusText.textContent = 'نشط';
+                statusBadge.style.display = 'inline-block';
+            }
+        } catch (err) {
+            console.error(err);
+            showError('تعذر تحميل التفضيلات');
+        }
+    }
+    
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        hideMessages();
+        
+        const receiveEmail = document.getElementById('receiveEmail').checked;
+        const receiveTelegram = document.getElementById('receiveTelegram').checked;
+        
+        if (!receiveEmail && !receiveTelegram) {
+            showError('يجب اختيار طريقة إشعار واحدة على الأقل');
+            return;
+        }
+        
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'جاري الحفظ...';
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/preferences`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token: token,
+                    receive_email: receiveEmail,
+                    receive_telegram: receiveTelegram,
+                }),
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showSuccess(data.message || 'تم حفظ التفضيلات بنجاح');
+            } else {
+                showError(data.detail || 'حدث خطأ أثناء حفظ التفضيلات');
+            }
+        } catch (err) {
+            console.error(err);
+            showError('حدث خطأ في الاتصال');
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'حفظ التفضيلات';
+        }
+    });
+    
+    const confirmModal = document.getElementById('confirmModal');
+    const modalConfirm = document.getElementById('modalConfirm');
+    const modalCancel = document.getElementById('modalCancel');
+    
+    unsubscribeAllBtn.addEventListener('click', () => {
+        confirmModal.style.display = 'flex';
+    });
+    
+    modalCancel.addEventListener('click', () => {
+        confirmModal.style.display = 'none';
+    });
+    
+    modalConfirm.addEventListener('click', async () => {
+        confirmModal.style.display = 'none';
+        unsubscribeAllBtn.disabled = true;
+        unsubscribeAllBtn.textContent = 'جاري الإلغاء...';
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/unsubscribe/${token}`, {
+                method: 'POST',
+            });
+            
+            if (response.ok) {
+                statusBadge.className = 'status-badge inactive';
+                statusText.textContent = 'غير مشترك';
+                statusBadge.style.display = 'inline-block';
+                form.style.display = 'none';
+                unsubscribeAllBtn.style.display = 'none';
+                showSuccess('تم إلغاء الاشتراك بنجاح');
+            } else {
+                const data = await response.json();
+                showError(data.detail || 'حدث خطأ أثناء إلغاء الاشتراك');
+            }
+        } catch (err) {
+            console.error(err);
+            showError('حدث خطأ في الاتصال');
+        } finally {
+            unsubscribeAllBtn.disabled = false;
+            unsubscribeAllBtn.textContent = 'إلغاء الاشتراك من كل شيء';
+        }
+    });
+    
+    confirmModal.addEventListener('click', (e) => {
+        if (e.target === confirmModal) {
+            confirmModal.style.display = 'none';
+        }
+    });
+    
+    function showSuccess(message) {
+        statusMessage.textContent = message;
+        statusMessage.style.display = 'block';
+        statusMessage.classList.add('show');
+        errorMessage.style.display = 'none';
+    }
+    
+    function showError(message) {
+        errorMessage.textContent = message;
+        errorMessage.style.display = 'block';
+        errorMessage.classList.add('show');
+        statusMessage.style.display = 'none';
+    }
+    
+    function hideMessages() {
+        statusMessage.style.display = 'none';
+        errorMessage.style.display = 'none';
+    }
+</script>
+{% endblock %}
+

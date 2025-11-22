@@ -132,3 +132,10 @@ class UnsubscribeRequest(BaseModel):
     """Request model for unsubscribe request"""
     email: EmailStr = Field(..., description="User's email address")
 
+
+class PreferencesRequest(BaseModel):
+    """Request model for updating user preferences"""
+    token: str = Field(..., description="User token")
+    receive_email: bool = Field(..., description="Receive email notifications")
+    receive_telegram: bool = Field(..., description="Receive Telegram notifications")
+
