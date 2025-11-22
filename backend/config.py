@@ -39,6 +39,9 @@ class Settings(BaseSettings):
 
     smtp_timeout: int = 30
 
+    telegram_bot_token: str = ""
+    telegram_bot_username: str = ""
+
     api_port: int = 8000
 
     verification_token_expiry_hours: int = 24
@@ -46,6 +49,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"
 
 
 settings = Settings()

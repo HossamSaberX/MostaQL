@@ -2,6 +2,7 @@
 Job notification service.
 """
 from typing import List, Dict
+from html import escape
 from loguru import logger
 
 from backend.database import (
@@ -13,6 +14,7 @@ from backend.database import (
     UserCategory,
 )
 from backend.services.notification_queue import EmailTask, email_task_queue
+from backend.services.channels import TelegramChannel
 from backend.config import settings
 
 
@@ -69,23 +71,24 @@ def _build_email_tasks(
 
 def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
     """
-    Persist notification rows for new jobs in a category and enqueue emails.
+    Persist notification rows for new jobs in a category and dispatch via notification channels.
     """
     if not new_jobs:
-        return {"queued_emails": 0, "notifications": 0}
+        return {"queued_emails": 0, "notifications": 0, "sent_telegram": 0}
 
     db = SessionLocal()
     queued_notifications = 0
+    sent_telegram = 0
     try:
         category = db.query(Category).filter(Category.id == category_id).first()
         if not category:
             logger.warning(f"Category {category_id} not found while notifying users")
-            return {"queued_emails": 0, "notifications": 0}
+            return {"queued_emails": 0, "notifications": 0, "sent_telegram": 0}
 
         users = _get_users_for_category(category_id, db)
         if not users:
             logger.info(f"No verified subscribers for category {category.name}")
-            return {"queued_emails": 0, "notifications": 0}
+            return {"queued_emails": 0, "notifications": 0, "sent_telegram": 0}
 
         notification_rows: Dict[int, List[int]] = {}
         for job in new_jobs:
@@ -103,19 +106,38 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
 
         db.commit()
 
+        telegram_channel = TelegramChannel()
+        job_payloads = [{"title": job.title, "url": job.url} for job in new_jobs]
+        
+        for user in users:
+            if user.id not in notification_rows:
+                continue
+            
+            if user.telegram_chat_id:
+                msg_content = "\n".join([
+                    f"\u200F• <a href=\"{escape(j['url'])}\">{escape(j['title'])}</a>" 
+                    for j in job_payloads
+                ])
+                title = f"\u200Fوظائف جديدة في {escape(category.name)}"
+                
+                success = telegram_channel.send(user.telegram_chat_id, title, msg_content)
+                if success:
+                    sent_telegram += 1
+
         tasks = _build_email_tasks(users, category.name, new_jobs, notification_rows)
         for task in tasks:
             email_task_queue.enqueue(task)
 
         logger.info(
-            f"Queued {len(tasks)} emails ({queued_notifications} notifications) for category {category.name}"
+            f"Queued {len(tasks)} emails, sent {sent_telegram} Telegram messages "
+            f"({queued_notifications} notifications) for category {category.name}"
         )
-        return {"queued_emails": len(tasks), "notifications": queued_notifications}
+        return {"queued_emails": len(tasks), "notifications": queued_notifications, "sent_telegram": sent_telegram}
 
     except Exception as exc:
         db.rollback()
         logger.error(f"Error queueing notifications for category {category_id}: {exc}")
-        return {"queued_emails": 0, "notifications": 0}
+        return {"queued_emails": 0, "notifications": 0, "sent_telegram": 0}
     finally:
         db.close()
 

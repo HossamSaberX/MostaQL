@@ -20,7 +20,7 @@ from fastapi.templating import Jinja2Templates
 from backend.database import init_db
 from backend.utils.logger import app_logger
 from backend.scheduler import start_scheduler, shutdown_scheduler
-from backend.api import subscribe, verify, health, test
+from backend.api import subscribe, verify, health, test, webhook
 from backend.utils.limiter import limiter
 from backend.services.notification_queue import email_task_queue
 from backend.config import settings
@@ -84,6 +84,7 @@ app.include_router(subscribe.router, prefix="/api", tags=["subscribe"])
 app.include_router(verify.router, prefix="/api", tags=["verify"])
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(test.router, prefix="/api/test", tags=["testing"])
+app.include_router(webhook.router, prefix="/api", tags=["webhook"])
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):

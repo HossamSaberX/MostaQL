@@ -25,6 +25,7 @@ class User(Base):
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
     token_issued_at = Column(TIMESTAMP, default=datetime.utcnow)
     unsubscribed = Column(Boolean, default=False)
+    telegram_chat_id = Column(String(64), nullable=True, unique=True)
     last_notified_at = Column(TIMESTAMP, nullable=True)
     
     categories = relationship("UserCategory", back_populates="user", cascade="all, delete-orphan")
