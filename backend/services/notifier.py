@@ -3,6 +3,7 @@ Job notification service.
 """
 from typing import List, Dict, Tuple
 from html import escape
+from datetime import datetime
 from loguru import logger
 
 from backend.database import (
@@ -141,6 +142,19 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
                 success = telegram_channel.send(user.telegram_chat_id, title, msg_content)
                 if success:
                     sent_telegram += 1
+                    if not user.receive_email:
+                        user_notification_ids = notification_rows.get(user.id, [])
+                        if user_notification_ids:
+                            db.query(Notification).filter(
+                                Notification.id.in_(user_notification_ids)
+                            ).update(
+                                {
+                                    "status": "sent", 
+                                    "sent_at": datetime.utcnow()
+                                },
+                                synchronize_session=False
+                            )
+                            db.commit()
 
         # 3. Send Emails (Grouped by job set for efficient BCC)
         tasks = []
