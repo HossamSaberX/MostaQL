@@ -89,6 +89,16 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def add_head_method(request: Request, call_next):
+    if request.method == "HEAD":
+        request.scope["method"] = "GET"
+        response = await call_next(request)
+        response.body = b""
+        return response
+    return await call_next(request)
+
+
 app.include_router(subscribe.router, prefix="/api", tags=["subscribe"])
 app.include_router(verify.router, prefix="/api", tags=["verify"])
 app.include_router(health.router, prefix="/api", tags=["health"])
