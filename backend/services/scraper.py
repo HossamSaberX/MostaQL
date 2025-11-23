@@ -96,7 +96,7 @@ def quick_check_category(category_id: int, category_url: str) -> Optional[Dict[s
         )
         response.raise_for_status()
         
-        soup = BeautifulSoup(response.content, 'html.parser')
+        soup = BeautifulSoup(response.content, 'lxml')
         tbody = soup.find('tbody', attrs={'data-filter': 'collection'})
         
         if not tbody:
@@ -151,7 +151,7 @@ def scrape_category(category_id: int, category_url: str) -> List[Dict[str, str]]
         )
         response.raise_for_status()
         
-        soup = BeautifulSoup(response.content, 'html.parser')
+        soup = BeautifulSoup(response.content, 'lxml')
         
         tbody = soup.find('tbody', attrs={'data-filter': 'collection'})
         
@@ -344,14 +344,12 @@ def extract_hiring_rate(job_url: str) -> Optional[float]:
         if response.status_code != 200:
             return None
             
-        soup = BeautifulSoup(response.content, 'html.parser')
+        soup = BeautifulSoup(response.content, 'lxml')
         
-        # Look for the employer widget
         widget = soup.find('div', attrs={'data-type': 'employer_widget'})
         if not widget:
             return None
             
-        # Find the table row with "معدل التوظيف"
         target_row = None
         for row in widget.find_all('tr'):
             if "معدل التوظيف" in row.get_text():
@@ -361,14 +359,12 @@ def extract_hiring_rate(job_url: str) -> Optional[float]:
         if not target_row:
             return None
             
-        # Get the second cell
         cells = target_row.find_all('td')
         if len(cells) < 2:
             return None
             
         rate_text = cells[1].get_text(strip=True)
         
-        # Parse "0.00%" or "لم يحسب بعد"
         if "%" in rate_text:
             return float(rate_text.replace('%', ''))
         
@@ -391,8 +387,7 @@ def enrich_jobs_with_hiring_rates(job_ids: List[int]) -> None:
         jobs = db.query(Job).filter(Job.id.in_(job_ids)).all()
         
         for job in jobs:
-            # Add delay to avoid detection
-            time.sleep(random.uniform(1, 3))
+            time.sleep(1)
             
             rate = extract_hiring_rate(job.url)
             if rate is not None:
@@ -427,21 +422,16 @@ def scrape_category_with_logging(category_id: int) -> List[Job]:
         
         new_jobs = save_new_jobs(category_id, jobs_data)
         
-        # Enrich with hiring rates
         if new_jobs:
             try:
                 job_ids = [j.id for j in new_jobs]
                 enrich_jobs_with_hiring_rates(job_ids)
                 
-                # Refresh jobs to get updated data (hiring_rate)
-                # We need to re-query because save_new_jobs closed its session
-                # and enrich_jobs_with_hiring_rates used a different session
                 db_refresh = SessionLocal()
                 for i, job in enumerate(new_jobs):
                     refreshed_job = db_refresh.query(Job).filter(Job.id == job.id).first()
                     if refreshed_job:
                         new_jobs[i] = refreshed_job
-                        # Detach from session so we can use it after close
                         db_refresh.expunge(refreshed_job)
                 db_refresh.close()
                 
