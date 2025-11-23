@@ -74,18 +74,7 @@ body {
     display: flex;
     align-items: center;
     gap: 6px;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-}
-
-.notification-inline::-webkit-scrollbar {
-    display: none;
-}
-
-.notification-inline {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+    flex-wrap: wrap;
 }
 
 .notification-option {
@@ -101,7 +90,8 @@ body {
     white-space: nowrap;
     border: 1px solid transparent;
     background: var(--bg-muted);
-    flex-shrink: 1;
+    flex: 1 1 auto;
+    justify-content: center;
 }
 
 .notification-option:hover {
