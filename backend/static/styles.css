@@ -74,8 +74,18 @@ body {
     display: flex;
     align-items: center;
     gap: 6px;
-    justify-content: space-between;
     flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.notification-inline::-webkit-scrollbar {
+    display: none;
+}
+
+.notification-inline {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 
 .notification-option {
