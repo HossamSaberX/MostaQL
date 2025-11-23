@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
-    <div class="preferences-header">
+<article class="card">
+    <header class="preferences-header">
         <h1>إدارة التفضيلات</h1>
-        <div class="status-badge" id="statusBadge" style="display: none;">
+        <div class="status-badge" id="statusBadge" style="display: none;" aria-live="polite">
             <span id="statusText">جاري التحميل...</span>
         </div>
-    </div>
+    </header>
     
-    <div id="statusMessage" class="alert success"></div>
-    <div id="errorMessage" class="alert error"></div>
+    <div id="statusMessage" class="alert success" role="alert" aria-live="polite"></div>
+    <div id="errorMessage" class="alert error" role="alert" aria-live="assertive"></div>
     
     <form id="preferencesForm" novalidate>
         {{ notification_options(email_checked=False, telegram_checked=False) }}
@@ -27,7 +27,7 @@
     <div class="back-link">
         <a href="/" class="helper-text">← العودة للصفحة الرئيسية</a>
     </div>
-</div>
+</article>
 
 <div id="confirmModal" class="modal" style="display: none;">
     <div class="modal-content">

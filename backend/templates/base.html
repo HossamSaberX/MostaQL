@@ -1,23 +1,24 @@
 {% macro notification_options(email_checked=True, telegram_checked=True) %}
-<div class="form-group notification-group">
+<fieldset class="form-group notification-group">
+    <legend class="visually-hidden">خيارات الإشعارات</legend>
     <div class="notification-inline">
         <label class="notification-option">
             <input type="checkbox" id="receiveEmail" name="receive_email" {{ 'checked' if email_checked else '' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M20 4H4C2.9 4 2.01 4.9 2.01 6L2 18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V6C22 4.9 21.1 4 20 4ZM20 8L12 13L4 8V6L12 11L20 6V8Z" fill="currentColor"/>
             </svg>
             <span>{{ 'بريد' if email_checked else 'البريد الإلكتروني' }}</span>
         </label>
         <label class="notification-option">
             <input type="checkbox" id="receiveTelegram" name="receive_telegram" {{ 'checked' if telegram_checked else '' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M20.665 3.717L2.335 10.786C1.084 11.286 1.089 11.984 2.103 12.295L6.81 13.764L17.704 6.893C18.22 6.58 18.693 6.753 18.307 7.096L9.482 15.053V15.052L9.481 15.054L9.156 19.916C9.633 19.916 9.843 19.699 10.11 19.44L12.43 17.187L17.257 20.753C18.147 21.244 18.787 20.991 19.009 19.93L22.18 5.004C22.505 3.48 21.691 2.789 20.665 3.717Z" fill="currentColor"/>
             </svg>
             <span>تيليجرام</span>
         </label>
         
         <div class="notification-option filter-option" title="تصفية الوظائف حسب معدل توظيف صاحب المشروع">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M16 6L18.29 8.29L13.41 13.17L9.41 9.17L2 16.59L3.41 18L9.41 12L13.41 16L19.71 9.71L22 12V6H16Z" fill="currentColor"/>
             </svg>
             <span>معدل توظيف &ge;</span>
@@ -31,11 +32,13 @@
                 step="5"
                 placeholder="0"
                 dir="ltr"
+                lang="en"
+                aria-label="الحد الأدنى لمعدل التوظيف بالنسبة المئوية"
             >
             <span class="unit">%</span>
         </div>
     </div>
-</div>
+</fieldset>
 {% endmacro %}
 
 <!DOCTYPE html>
@@ -70,10 +73,12 @@
 </head>
 <body>
     <div class="page-wrapper {{ page_wrapper_class or "" }}">
-        {% block content %}{% endblock %}
+        <main id="main-content">
+            {% block content %}{% endblock %}
+        </main>
         <footer class="site-footer">
             <span>بواسطة</span>
-            <a href="https://github.com/hossamsaberx" target="_blank" rel="noopener">
+            <a href="https://github.com/hossamsaberx" target="_blank" rel="noopener noreferrer">
                 حسام صابر
             </a>
         </footer>

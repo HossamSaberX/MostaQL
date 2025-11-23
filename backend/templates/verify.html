@@ -1,21 +1,21 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
-    <div id="statusContent"></div>
+<article class="card">
+    <div id="statusContent" role="alert" aria-live="polite"></div>
     
-    <div id="telegramSection" style="display: none; margin-bottom: 24px;">
-        <a id="telegramBtn" href="#" target="_blank" class="btn-telegram">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <section id="telegramSection" style="display: none; margin-bottom: 24px;">
+        <a id="telegramBtn" href="#" target="_blank" rel="noopener noreferrer" class="btn-telegram">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M20.665 3.717L2.335 10.786C1.084 11.286 1.089 11.984 2.103 12.295L6.81 13.764L17.704 6.893C18.22 6.58 18.693 6.753 18.307 7.096L9.482 15.053V15.052L9.481 15.054L9.156 19.916C9.633 19.916 9.843 19.699 10.11 19.44L12.43 17.187L17.257 20.753C18.147 21.244 18.787 20.991 19.009 19.93L22.18 5.004C22.505 3.48 21.691 2.789 20.665 3.717Z" fill="white"/>
             </svg>
             تفعيل تنبيهات تيليجرام
         </a>
         <p class="input-hint helper-text" style="margin-top: 12px;">احصل على الإشعارات فوراً على جوالك</p>
-    </div>
+    </section>
 
     <a class="helper-text" href="/">← العودة للصفحة الرئيسية</a>
-</div>
+</article>
 {% endblock %}
 
 {% block scripts %}

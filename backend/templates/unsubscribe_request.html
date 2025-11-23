@@ -1,25 +1,25 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
-    <div class="header">
+<article class="card">
+    <header class="header">
         <h1>إلغاء الاشتراك</h1>
         <p>أدخل بريدك الإلكتروني لإلغاء الاشتراك من الإشعارات</p>
-    </div>
+    </header>
     
     <form id="unsubscribeForm">
         <div class="form-group">
             <label for="email">البريد الإلكتروني</label>
-            <input type="email" id="email" required placeholder="name@example.com">
+            <input type="email" id="email" required placeholder="name@example.com" dir="ltr" lang="en" autocomplete="email">
         </div>
         
         <button type="submit" id="submitBtn" class="form-action">إلغاء الاشتراك</button>
     </form>
     
-    <div id="message" class="message" style="display: none;"></div>
+    <div id="message" class="message" style="display: none;" role="alert" aria-live="polite"></div>
     
     <a class="helper-text" href="/">← العودة للصفحة الرئيسية</a>
-</div>
+</article>
 {% endblock %}
 
 {% block scripts %}
