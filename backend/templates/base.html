@@ -44,7 +44,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title or "تنبيهات وظائف مستقل" }}</title>
-    <link rel="icon" type="image/png" href="/assets/favico.png">
+    <meta name="description" content="{{ description or 'احصل على تنبيهات فورية لأحدث مشاريع مستقل عبر البريد الإلكتروني وتيليجرام. لا تفوت أي فرصة عمل.' }}">
+    <meta name="keywords" content="{{ keywords or 'مستقل, وظائف, عمل حر, تنبيهات, فريلانسر, مشاريع' }}">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ request.url }}">
+    <meta property="og:title" content="{{ title or 'تنبيهات وظائف مستقل' }}">
+    <meta property="og:description" content="{{ description or 'احصل على تنبيهات فورية لأحدث مشاريع مستقل عبر البريد الإلكتروني وتيليجرام.' }}">
+    <meta property="og:image" content="{{ request.base_url }}assets/favico.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="{{ request.url }}">
+    <meta property="twitter:title" content="{{ title or 'تنبيهات وظائف مستقل' }}">
+    <meta property="twitter:description" content="{{ description or 'احصل على تنبيهات فورية لأحدث مشاريع مستقل عبر البريد الإلكتروني وتيليجرام.' }}">
+    <meta property="twitter:image" content="{{ request.base_url }}assets/favico.png">
+    
+    <link rel="icon" type="image/png" href="{{ url_for('assets', path='/favico.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
