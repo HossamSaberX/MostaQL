@@ -5,6 +5,7 @@ from typing import List, Dict, Tuple
 from html import escape
 from datetime import datetime
 from loguru import logger
+from sqlalchemy import or_, and_
 
 from backend.database import (
     SessionLocal,
@@ -26,7 +27,13 @@ def _get_users_for_category(category_id: int, db) -> List[User]:
             .filter(
                 UserCategory.category_id == category_id,
                 User.unsubscribed.is_(False),
-                User.verified.is_(True),
+                or_(
+                    User.verified.is_(True),
+                    and_(
+                        User.telegram_chat_id.isnot(None),
+                        User.receive_telegram.is_(True)
+                    )
+                )
             )
             .all()
     )
@@ -164,6 +171,8 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
             if user.id not in user_job_map:
                 continue
             if not user.receive_email:
+                continue
+            if not user.verified:
                 continue
                 
             job_ids = tuple(sorted(j.id for j in user_job_map[user.id]))
