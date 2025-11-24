@@ -48,6 +48,7 @@ logs/
 
 # Documentation (ignore all markdown)
 *.md
+!README.md
 !LICENSE.md
 
 # Testing
