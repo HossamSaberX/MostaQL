@@ -1,5 +1,7 @@
 # MostaQL
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 MostaQL is a specialized job scraping and notification system designed to monitor Mostaql.com for new freelance opportunities. It features intelligent polling, advanced filtering based on hiring rates, and a dual-channel notification system.
 
 ## Features
@@ -80,4 +82,8 @@ The system is configured via environment variables. Copy `.env.example` to `.env
 | `EMAIL_PROVIDER` | `gmail`, `brevo`, or `alternate` | `gmail` |
 | `TELEGRAM_BOT_TOKEN` | Your Telegram Bot Token | Required |
 | `DATABASE_URL` | SQLite connection string | `sqlite:///./data/mostaql.db` |
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
