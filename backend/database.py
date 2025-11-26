@@ -11,6 +11,7 @@ from typing import Generator
 import os
 
 from backend.config import settings
+from backend.enums import NotificationChannel, NotificationStatus
 
 Base = declarative_base()
 
@@ -96,8 +97,9 @@ class Notification(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     job_id = Column(Integer, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    channel = Column(String(20), nullable=True)
     sent_at = Column(TIMESTAMP, default=datetime.utcnow)
-    status = Column(String(20), default="pending")
+    status = Column(String(20), default=NotificationStatus.PENDING.value)
     error_message = Column(Text, nullable=True)
     
     user = relationship("User", back_populates="notifications")
@@ -105,6 +107,7 @@ class Notification(Base):
     
     __table_args__ = (
         Index('idx_notifications_status', 'status', 'sent_at'),
+        Index('idx_notifications_channel', 'channel'),
     )
 
 

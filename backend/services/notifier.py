@@ -15,8 +15,8 @@ from backend.database import (
     Category,
     UserCategory,
 )
-from backend.services.notification_queue import EmailTask, email_task_queue
-from backend.services.channels import TelegramChannel
+from backend.enums import NotificationChannel, NotificationStatus
+from backend.services.notification_queue import EmailTask, TelegramTask, email_task_queue, telegram_task_queue
 from backend.config import settings
 
 
@@ -60,12 +60,14 @@ def _build_email_tasks(
         batch_users = active_users[start:start + batch_size]
         bcc_emails = [user.email for user in batch_users]
         batch_notification_ids = []
+        batch_user_ids = [user.id for user in batch_users]
         for user in batch_users:
             batch_notification_ids.extend(notification_rows.get(user.id, []))
             
         tasks.append(
             EmailTask(
                 notification_ids=batch_notification_ids,
+                user_ids=batch_user_ids,
                 email="undisclosed-recipients:;",
                 category_name=category_name,
                 jobs=job_payloads,
@@ -77,61 +79,84 @@ def _build_email_tasks(
     return tasks
 
 
+def _filter_jobs_for_user(user: User, jobs: List[Job]) -> List[Job]:
+    if user.min_hiring_rate is None:
+        return jobs
+    
+    filtered = []
+    for job in jobs:
+        if job.hiring_rate is not None and job.hiring_rate >= user.min_hiring_rate:
+            filtered.append(job)
+    return filtered
+
+
+def _create_notification(
+    db, 
+    user_id: int, 
+    job_id: int, 
+    channel: NotificationChannel
+) -> Notification:
+    notif = Notification(
+        user_id=user_id,
+        job_id=job_id,
+        status=NotificationStatus.PENDING.value,
+        channel=channel.value
+    )
+    db.add(notif)
+    return notif
+
+
 def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
-    """
-    Persist notification rows for new jobs in a category and dispatch via notification channels.
-    """
     if not new_jobs:
-        return {"queued_emails": 0, "notifications": 0, "sent_telegram": 0}
+        return {"queued_emails": 0, "notifications": 0, "queued_telegram": 0}
 
     db = SessionLocal()
     queued_notifications = 0
-    sent_telegram = 0
+    queued_telegram = 0
     try:
         category = db.query(Category).filter(Category.id == category_id).first()
         if not category:
             logger.warning(f"Category {category_id} not found while notifying users")
-            return {"queued_emails": 0, "notifications": 0, "sent_telegram": 0}
+            return {"queued_emails": 0, "notifications": 0, "queued_telegram": 0}
 
         users = _get_users_for_category(category_id, db)
         if not users:
             logger.info(f"No verified subscribers for category {category.name}")
-            return {"queued_emails": 0, "notifications": 0, "sent_telegram": 0}
+            return {"queued_emails": 0, "notifications": 0, "queued_telegram": 0}
 
-        # 1. Filter jobs per user and create notifications
         user_job_map: Dict[int, List[Job]] = {}
-        notification_rows: Dict[int, List[int]] = {}
+        pending_notifications: List[Tuple[int, Notification]] = []
         
         for user in users:
-            filtered_jobs = []
-            for job in new_jobs:
-                # Filter by hiring rate
-                if user.min_hiring_rate is not None:
-                    if job.hiring_rate is None or job.hiring_rate < user.min_hiring_rate:
-                        continue
-                filtered_jobs.append(job)
-            
+            filtered_jobs = _filter_jobs_for_user(user, new_jobs)
             if not filtered_jobs:
                 continue
-                
             user_job_map[user.id] = filtered_jobs
             
             for job in filtered_jobs:
-                notification = Notification(
-                    user_id=user.id,
-                    job_id=job.id,
-                    status="pending",
-                )
-                db.add(notification)
-                db.flush()
-                notification_rows.setdefault(user.id, []).append(notification.id)
-                queued_notifications += 1
+                if user.receive_email and user.verified:
+                    pending_notifications.append((user.id, _create_notification(
+                        db, user.id, job.id, NotificationChannel.EMAIL
+                    )))
+                if user.receive_telegram and user.telegram_chat_id:
+                    pending_notifications.append((user.id, _create_notification(
+                        db, user.id, job.id, NotificationChannel.TELEGRAM
+                    )))
 
+        db.flush()
+        
+        email_notification_rows: Dict[int, List[int]] = {}
+        telegram_notification_rows: Dict[int, List[int]] = {}
+        for user_id, notif in pending_notifications:
+            if notif.channel == NotificationChannel.EMAIL.value:
+                email_notification_rows.setdefault(user_id, []).append(notif.id)
+            else:
+                telegram_notification_rows.setdefault(user_id, []).append(notif.id)
+        
+        queued_notifications = len(pending_notifications)
         db.commit()
 
-        # 2. Send Telegram
-        telegram_channel = TelegramChannel()
-        
+        category_name_escaped = escape(category.name)
         for user in users:
             if user.id not in user_job_map:
                 continue
@@ -144,26 +169,21 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
                     f"\u200F• <a href=\"{escape(j['url'])}\">{escape(j['title'])}</a>" 
                     for j in job_payloads
                 ])
-                title = f"\u200Fوظائف جديدة في {escape(category.name)}"
+                title = f"\u200Fوظائف جديدة في {category_name_escaped}"
                 
-                success = telegram_channel.send(user.telegram_chat_id, title, msg_content)
-                if success:
-                    sent_telegram += 1
-                    
-                    user_notification_ids = notification_rows.get(user.id, [])
-                    if user_notification_ids:
-                        db.query(Notification).filter(
-                            Notification.id.in_(user_notification_ids)
-                        ).update(
-                            {
-                                "status": "sent", 
-                                "sent_at": datetime.utcnow()
-                            },
-                            synchronize_session=False
+                user_notification_ids = telegram_notification_rows.get(user.id, [])
+                if user_notification_ids:
+                    telegram_task_queue.enqueue(
+                        TelegramTask(
+                            notification_ids=user_notification_ids,
+                            user_ids=[user.id],
+                            chat_id=user.telegram_chat_id,
+                            title=title,
+                            content=msg_content,
                         )
-                        db.commit()
+                    )
+                    queued_telegram += 1
 
-        # 3. Send Emails (Grouped by job set for efficient BCC)
         tasks = []
         job_set_users: Dict[Tuple[int, ...], List[User]] = {}
         
@@ -182,22 +202,22 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
         
         for job_ids, batch_users in job_set_users.items():
             batch_jobs = [job_map[jid] for jid in job_ids]
-            batch_tasks = _build_email_tasks(batch_users, category.name, batch_jobs, notification_rows)
+            batch_tasks = _build_email_tasks(batch_users, category.name, batch_jobs, email_notification_rows)
             tasks.extend(batch_tasks)
 
         for task in tasks:
             email_task_queue.enqueue(task)
 
         logger.info(
-            f"Queued {len(tasks)} emails, sent {sent_telegram} Telegram messages "
+            f"Queued {len(tasks)} emails, {queued_telegram} Telegram messages "
             f"({queued_notifications} notifications) for category {category.name}"
         )
-        return {"queued_emails": len(tasks), "notifications": queued_notifications, "sent_telegram": sent_telegram}
+        return {"queued_emails": len(tasks), "notifications": queued_notifications, "queued_telegram": queued_telegram}
 
     except Exception as exc:
         db.rollback()
         logger.error(f"Error queueing notifications for category {category_id}: {exc}")
-        return {"queued_emails": 0, "notifications": 0, "sent_telegram": 0}
+        return {"queued_emails": 0, "notifications": 0, "queued_telegram": 0}
     finally:
         db.close()
 

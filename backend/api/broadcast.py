@@ -5,8 +5,7 @@ from typing import Optional
 from html import escape
 
 from backend.database import get_db, User
-from backend.services.notification_queue import email_task_queue, EmailTask
-from backend.services.channels import TelegramChannel
+from backend.services.notification_queue import email_task_queue, EmailTask, send_telegram_message
 from backend.config import settings
 from backend.utils.logger import app_logger
 
@@ -25,7 +24,6 @@ async def broadcast_message(data: BroadcastRequest, db: Session = Depends(get_db
     if data.admin_secret != settings.secret_key:
         raise HTTPException(status_code=403, detail="Unauthorized")
     
-    telegram_channel = TelegramChannel()
     sent_telegram = 0
     sent_emails = 0
     
@@ -34,7 +32,7 @@ async def broadcast_message(data: BroadcastRequest, db: Session = Depends(get_db
         email_user = db.query(User).filter(User.email == data.email).first()
         
         if telegram_user and telegram_user.receive_telegram:
-            success = telegram_channel.send(
+            success = send_telegram_message(
                 data.chat_id,
                 "إعلان من خدمة تنبيهات مستقل",
                 escape(data.message)
@@ -46,6 +44,7 @@ async def broadcast_message(data: BroadcastRequest, db: Session = Depends(get_db
             email_task_queue.enqueue(
                 EmailTask(
                     notification_ids=[],
+                    user_ids=[],
                     email=email_user.email,
                     category_name="إعلان",
                     jobs=[{"title": data.message, "url": settings.base_url}],
@@ -64,7 +63,7 @@ async def broadcast_message(data: BroadcastRequest, db: Session = Depends(get_db
             raise HTTPException(404, "User with chat_id not found")
         
         if user.receive_telegram:
-            success = telegram_channel.send(
+            success = send_telegram_message(
                 data.chat_id,
                 "إعلان من خدمة تنبيهات مستقل",
                 escape(data.message)
@@ -81,6 +80,7 @@ async def broadcast_message(data: BroadcastRequest, db: Session = Depends(get_db
             email_task_queue.enqueue(
                 EmailTask(
                     notification_ids=[],
+                    user_ids=[],
                     email=user.email,
                     category_name="إعلان",
                     jobs=[{"title": data.message, "url": settings.base_url}],
@@ -100,7 +100,7 @@ async def broadcast_message(data: BroadcastRequest, db: Session = Depends(get_db
         telegram_users = [u for u in users if u.receive_telegram and u.telegram_chat_id]
         
         for user in telegram_users:
-            success = telegram_channel.send(
+            success = send_telegram_message(
                 user.telegram_chat_id,
                 "إعلان من خدمة تنبيهات مستقل",
                 escape(data.message)
@@ -112,6 +112,7 @@ async def broadcast_message(data: BroadcastRequest, db: Session = Depends(get_db
             email_task_queue.enqueue(
                 EmailTask(
                     notification_ids=[],
+                    user_ids=[],
                     email=user.email,
                     category_name="إعلان",
                     jobs=[{"title": data.message, "url": settings.base_url}],
