@@ -12,6 +12,7 @@ import os
 
 from backend.config import settings
 from backend.enums import NotificationChannel, NotificationStatus
+from backend.utils.logger import app_logger
 
 Base = declarative_base()
 
@@ -194,18 +195,18 @@ def init_db():
         if to_create:
             db.add_all(to_create)
             db.commit()
-            print(f"✓ Added {len(to_create)} missing categories")
+            app_logger.info(f"✓ Added {len(to_create)} missing categories")
         else:
-            print(f"✓ All {len(desired_categories)} categories already exist")
+            app_logger.info(f"✓ All {len(desired_categories)} categories already exist")
     except Exception as e:
-        print(f"✗ Error initializing database: {e}")
+        app_logger.error(f"✗ Error initializing database: {e}")
         db.rollback()
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    print("Initializing database...")
+    app_logger.info("Initializing database...")
     init_db()
-    print("✓ Database initialization complete")
+    app_logger.info("✓ Database initialization complete")
 
