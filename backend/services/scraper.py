@@ -350,7 +350,11 @@ def extract_hiring_rate(job_url: str) -> Optional[float]:
         return None
 
 
-def enrich_jobs_with_hiring_rates(job_ids: List[int], max_workers: int = 2, rate_limit_delay: float = 0.2) -> None:
+def enrich_jobs_with_hiring_rates(
+    job_ids: List[int], 
+    max_workers: int = settings.scraper_max_workers, 
+    rate_limit_delay: float = settings.scraper_rate_limit_delay
+) -> None:
     if not job_ids:
         return
 

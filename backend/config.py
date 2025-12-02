@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     scraper_quick_check_count: int = 5
     mostaql_base_url: str = "https://mostaql.com"
     http_request_timeout: int = 10
+    scraper_max_workers: int = 2
+    scraper_rate_limit_delay: float = 0.2
     max_categories_per_user: int = 10
 
     rate_limit_per_hour: int = 5
