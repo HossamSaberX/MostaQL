@@ -22,7 +22,7 @@ from backend.utils.logger import app_logger
 from backend.scheduler import start_scheduler, shutdown_scheduler
 from backend.api import subscribe, verify, health, test, webhook, seo, broadcast
 from backend.utils.limiter import limiter
-from backend.services.notification_queue import email_task_queue
+from backend.services.notification_queue import email_task_queue, telegram_task_queue
 from backend.config import settings
 from alembic.config import Config
 from alembic import command
@@ -41,6 +41,9 @@ async def lifespan(app: FastAPI):
     
     app_logger.info("Starting email task queue...")
     email_task_queue.start()
+    
+    app_logger.info("Starting telegram task queue...")
+    telegram_task_queue.start()
     
     app_logger.info("Running database migrations...")
     alembic_cfg = Config("alembic.ini")
@@ -63,6 +66,7 @@ async def lifespan(app: FastAPI):
         shutdown_scheduler(scheduler)
     
     email_task_queue.stop()
+    telegram_task_queue.stop()
     
     app_logger.info("✓ Application shut down gracefully")
 

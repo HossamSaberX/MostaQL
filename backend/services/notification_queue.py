@@ -1,25 +1,66 @@
 """
-Simple background email task queue for notification delivery.
+Background task queues for notification delivery.
 """
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from queue import Queue
 from threading import Event, Thread
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Generic, TypeVar
+
+import requests
 
 from backend.database import SessionLocal, Notification, User
-from backend.services.email import send_job_notifications
+from backend.enums import NotificationStatus
+from backend.config import settings
 from backend.utils.logger import app_logger
 
 
+def send_telegram_message(chat_id: str, title: str, content: str) -> bool:
+    if not chat_id or not settings.telegram_bot_token:
+        return False
+    url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": f"<b>{title}</b>\n\n{content}",
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
+    }
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        return True
+    except requests.exceptions.HTTPError:
+        if response.status_code == 400 and "parse" in response.text.lower():
+            payload["parse_mode"] = ""
+            try:
+                response = requests.post(url, json=payload, timeout=10)
+                response.raise_for_status()
+                return True
+            except Exception:
+                return False
+        return False
+    except Exception:
+        return False
+
+
 @dataclass
-class EmailTask:
-    """
-    Represents an email job queued for delivery.
-    """
+class BaseTask:
     notification_ids: List[int]
+    user_ids: List[int]
+
+
+@dataclass
+class TelegramTask(BaseTask):
+    chat_id: str
+    title: str
+    content: str
+
+
+@dataclass
+class EmailTask(BaseTask):
     email: str
     category_name: str
     jobs: List[Dict[str, str]]
@@ -27,24 +68,23 @@ class EmailTask:
     bcc: Optional[List[str]] = None
 
 
-class EmailTaskQueue:
-    """
-    Extremely lightweight task queue backed by a single worker thread.
-    Keeps the API/scheduler responsive while Gmail SMTP runs synchronously.
-    """
+T = TypeVar("T", bound=BaseTask)
 
-    def __init__(self) -> None:
-        self._queue: Queue[Optional[EmailTask]] = Queue()
+
+class BaseTaskQueue(ABC, Generic[T]):
+    def __init__(self, worker_name: str) -> None:
+        self._queue: Queue[Optional[T]] = Queue()
         self._worker: Optional[Thread] = None
         self._stop_event = Event()
+        self._worker_name = worker_name
 
     def start(self) -> None:
         if self._worker and self._worker.is_alive():
             return
         self._stop_event.clear()
-        self._worker = Thread(target=self._run, name="email-task-worker", daemon=True)
+        self._worker = Thread(target=self._run, name=self._worker_name, daemon=True)
         self._worker.start()
-        app_logger.info("✓ Email task queue worker started")
+        app_logger.info(f"✓ {self._worker_name} started")
 
     def stop(self) -> None:
         if not self._worker:
@@ -53,40 +93,41 @@ class EmailTaskQueue:
         self._queue.put(None)
         self._worker.join(timeout=5)
         self._worker = None
-        app_logger.info("✓ Email task queue worker stopped")
+        app_logger.info(f"✓ {self._worker_name} stopped")
 
-    def enqueue(self, task: EmailTask) -> None:
+    def enqueue(self, task: T) -> None:
         self._queue.put(task)
 
     def _run(self) -> None:
+        self._on_worker_start()
         while not self._stop_event.is_set():
             task = self._queue.get()
             if task is None:
                 self._queue.task_done()
                 continue
-
             try:
-                success = send_job_notifications(
-                    email=task.email,
-                    category_name=task.category_name,
-                    jobs=task.jobs,
-                    unsubscribe_token=task.unsubscribe_token,
-                    bcc=task.bcc,
-                )
+                success = self._process_task(task)
                 self._update_notification_status(task, success, None)
             except Exception as exc:
-                app_logger.error(f"Email task failed for {task.email}: {exc}")
+                app_logger.error(f"{self._worker_name} task failed: {exc}")
                 self._update_notification_status(task, False, str(exc))
             finally:
                 self._queue.task_done()
 
+    def _on_worker_start(self) -> None:
+        pass
+
+    @abstractmethod
+    def _process_task(self, task: T) -> bool:
+        pass
+
     def _update_notification_status(
         self,
-        task: EmailTask,
+        task: T,
         success: bool,
         error_message: Optional[str],
     ) -> None:
-        status = "sent" if success else "failed"
+        status = NotificationStatus.SENT.value if success else NotificationStatus.FAILED.value
         db = SessionLocal()
         try:
             db.query(Notification).filter(
@@ -99,31 +140,43 @@ class EmailTaskQueue:
                 },
                 synchronize_session=False,
             )
-
-            if success:
-                recipient_ids = (
-                    db.query(Notification.user_id)
-                    .filter(Notification.id.in_(task.notification_ids))
-                    .distinct()
-                    .all()
-                )
-                user_ids = [row[0] for row in recipient_ids if row[0]]
-                if user_ids:
-                    db.query(User).filter(User.id.in_(user_ids)).update(
+            if success and task.user_ids:
+                db.query(User).filter(User.id.in_(task.user_ids)).update(
                     {"last_notified_at": datetime.utcnow()},
                     synchronize_session=False,
                 )
-
             db.commit()
         except Exception as exc:
             db.rollback()
-            app_logger.error(
-                f"Failed to update notification status: {exc}"
-            )
+            app_logger.error(f"Failed to update notification status: {exc}")
         finally:
             db.close()
 
 
+class EmailTaskQueue(BaseTaskQueue[EmailTask]):
+    def __init__(self) -> None:
+        super().__init__("email-task-worker")
+
+    def _process_task(self, task: EmailTask) -> bool:
+        from backend.services.email import send_job_notifications
+        return send_job_notifications(
+            email=task.email,
+            category_name=task.category_name,
+            jobs=task.jobs,
+            unsubscribe_token=task.unsubscribe_token,
+            bcc=task.bcc,
+        )
+
+
+class TelegramTaskQueue(BaseTaskQueue[TelegramTask]):
+    def __init__(self) -> None:
+        super().__init__("telegram-task-worker")
+
+    def _process_task(self, task: TelegramTask) -> bool:
+        return send_telegram_message(task.chat_id, task.title, task.content)
+
+
 email_task_queue = EmailTaskQueue()
+telegram_task_queue = TelegramTaskQueue()
 
 

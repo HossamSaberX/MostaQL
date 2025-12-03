@@ -1,13 +1,13 @@
-"""
-Web scraper for Mostaql jobs with resilience and anti-detection
-"""
-import requests
-from bs4 import BeautifulSoup
-from typing import List, Dict, Optional
 import random
+import requests
+import threading
 import time
-from loguru import logger
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from typing import List, Dict, Optional, Tuple
+
+from bs4 import BeautifulSoup
+from loguru import logger
 
 from backend.database import SessionLocal, Job, Category, ScraperLog
 from backend.utils.security import hash_content
@@ -25,12 +25,10 @@ USER_AGENTS = [
 
 
 def get_random_user_agent() -> str:
-    """Get a random user agent for anti-detection"""
     return random.choice(USER_AGENTS)
 
 
 def get_headers() -> Dict[str, str]:
-    """Generate request headers with random user agent"""
     return {
         'User-Agent': get_random_user_agent(),
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -46,12 +44,6 @@ def get_headers() -> Dict[str, str]:
 
 
 def parse_job_listing(link_element) -> Optional[Dict[str, str]]:
-    """
-    Parse a single job listing from a link element
-    Returns dict with title, url, or None if parsing fails
-    
-    Based on actual Mostaql HTML structure from https://mostaql.com/projects
-    """
     try:
         if not link_element or link_element.name != 'a':
             return None
@@ -81,11 +73,6 @@ def parse_job_listing(link_element) -> Optional[Dict[str, str]]:
 
 
 def quick_check_category(category_id: int, category_url: str) -> Optional[Dict[str, str]]:
-    """
-    Quick check: Get the first job to see if anything changed.
-    Returns dict with 'title' and 'url' of first job, or None if no jobs found.
-    This is much faster than full scrape.
-    """
     try:
         headers = get_headers()
         response = requests.get(
@@ -133,10 +120,6 @@ def quick_check_category(category_id: int, category_url: str) -> Optional[Dict[s
 
 
 def scrape_category(category_id: int, category_url: str) -> List[Dict[str, str]]:
-    """
-    Scrape jobs from a category URL
-    Returns list of job dicts
-    """
     jobs = []
     
     try:
@@ -202,10 +185,6 @@ def scrape_category(category_id: int, category_url: str) -> List[Dict[str, str]]
 
 
 def _job_exists_in_db(db, job_data: Dict[str, str]) -> bool:
-    """
-    Check if a job already exists in DB by content_hash OR url.
-    Shared logic used by quick check and save_new_jobs.
-    """
     content_hash = hash_content(job_data['title'])
     existing = db.query(Job).filter(
         (Job.content_hash == content_hash) | (Job.url == job_data['url'])
@@ -214,10 +193,6 @@ def _job_exists_in_db(db, job_data: Dict[str, str]) -> bool:
 
 
 def save_new_jobs(category_id: int, jobs: List[Dict[str, str]]) -> List[Job]:
-    """
-    Save new jobs to database (deduplicated by content hash)
-    Returns list of newly saved Job objects
-    """
     db = SessionLocal()
     new_jobs = []
     
@@ -255,7 +230,6 @@ def save_new_jobs(category_id: int, jobs: List[Dict[str, str]]) -> List[Job]:
 
 
 def log_scrape_result(category_id: int, status: str, jobs_found: int, duration: float, error_msg: Optional[str] = None):
-    """Log scraper execution to database"""
     db = SessionLocal()
     try:
         log_entry = ScraperLog(
@@ -276,7 +250,6 @@ def log_scrape_result(category_id: int, status: str, jobs_found: int, duration: 
 
 
 def update_category_scrape_status(category_id: int, success: bool):
-    """Update category last scraped time and failure counter"""
     db = SessionLocal()
     try:
         category = db.query(Category).filter(Category.id == category_id).first()
@@ -297,10 +270,6 @@ def update_category_scrape_status(category_id: int, success: bool):
 
 
 def poll_category(category_id: int) -> List[Job]:
-    """
-    Polling function: Quick check first, then full scrape if needed.
-    Returns list of new Job objects
-    """
     db = SessionLocal()
     
     try:
@@ -329,11 +298,11 @@ def poll_category(category_id: int) -> List[Job]:
         db.close()
 
 
+class RateLimitError(Exception):
+    pass
+
+
 def extract_hiring_rate(job_url: str) -> Optional[float]:
-    """
-    Extract hiring rate from job detail page.
-    Returns float (0-100) or None if not found/calculated.
-    """
     try:
         headers = get_headers()
         response = requests.get(
@@ -341,6 +310,10 @@ def extract_hiring_rate(job_url: str) -> Optional[float]:
             headers=headers,
             timeout=settings.http_request_timeout
         )
+        
+        if response.status_code == 429:
+            raise RateLimitError(f"Rate limited (429) for {job_url}")
+        
         if response.status_code != 200:
             return None
             
@@ -370,31 +343,101 @@ def extract_hiring_rate(job_url: str) -> Optional[float]:
         
         return None
         
+    except RateLimitError:
+        raise
     except Exception as e:
         logger.warning(f"Failed to extract hiring rate for {job_url}: {e}")
         return None
 
 
-def enrich_jobs_with_hiring_rates(job_ids: List[int]) -> None:
-    """
-    Fetch and update hiring rates for the given jobs.
-    """
+def enrich_jobs_with_hiring_rates(
+    job_ids: List[int], 
+    max_workers: int = settings.scraper_max_workers, 
+    rate_limit_delay: float = settings.scraper_rate_limit_delay
+) -> None:
     if not job_ids:
         return
 
     db = SessionLocal()
     try:
         jobs = db.query(Job).filter(Job.id.in_(job_ids)).all()
+        job_urls = [(job.id, job.url) for job in jobs]
         
-        for job in jobs:
-            time.sleep(1)
+        request_lock = time.time()
+        lock = threading.Lock()
+        
+        def fetch_rate_with_backoff(job_id: int, url: str, attempts: int = 3) -> Tuple[int, Optional[float]]:
+            nonlocal request_lock
             
-            rate = extract_hiring_rate(job.url)
+            for attempt in range(attempts):
+                try:
+                    wait_time = 0
+                    with lock:
+                        now = time.time()
+                        wait_time = rate_limit_delay - (now - request_lock)
+                        if wait_time > 0:
+                            request_lock = now + wait_time
+                        else:
+                            request_lock = now
+                    
+                    if wait_time > 0:
+                        time.sleep(wait_time)
+                    
+                    rate = extract_hiring_rate(url)
+                    return (job_id, rate)
+                    
+                except RateLimitError:
+                    if attempt < attempts - 1:
+                        backoff = 2 ** (attempt + 1)
+                        logger.warning(f"Rate limited for job {job_id}, waiting {backoff}s (attempt {attempt + 1}/{attempts})")
+                        time.sleep(backoff)
+                    else:
+                        logger.error(f"Rate limit exceeded for job {job_id} after {attempts} attempts")
+                        return (job_id, None)
+                        
+                except Exception as e:
+                    if attempt < attempts - 1:
+                        backoff = 2 ** attempt
+                        logger.debug(f"Attempt {attempt + 1}/{attempts} failed for job {job_id}, retrying in {backoff}s: {e}")
+                        time.sleep(backoff)
+                    else:
+                        logger.warning(f"Failed to fetch hiring rate for job {job_id} after {attempts} attempts: {e}")
+                        return (job_id, None)
+            
+            return (job_id, None)
+        
+        results: Dict[int, Optional[float]] = {}
+        start_time = time.time()
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_job = {
+                executor.submit(fetch_rate_with_backoff, job_id, url): job_id 
+                for job_id, url in job_urls
+            }
+            
+            for future in as_completed(future_to_job):
+                job_id = future_to_job[future]
+                try:
+                    job_id, rate = future.result()
+                    results[job_id] = rate
+                except Exception as e:
+                    logger.warning(f"Unexpected error for job {job_id}: {e}")
+                    results[job_id] = None
+        
+        success_count = 0
+        for job in jobs:
+            rate = results.get(job.id)
             if rate is not None:
                 job.hiring_rate = rate
-                logger.info(f"Updated hiring rate for job {job.id}: {rate}%")
-            
+                success_count += 1
+        
         db.commit()
+        
+        duration = time.time() - start_time
+        jobs_per_sec = len(job_ids) / duration if duration > 0 else 0
+        logger.info(f"✓ Enriched {success_count}/{len(job_ids)} jobs with hiring rates in {duration:.2f}s "
+                   f"({jobs_per_sec:.1f} jobs/s)")
+        
     except Exception as e:
         logger.error(f"Error enriching jobs: {e}")
         db.rollback()
@@ -403,10 +446,6 @@ def enrich_jobs_with_hiring_rates(job_ids: List[int]) -> None:
 
 
 def scrape_category_with_logging(category_id: int) -> List[Job]:
-    """
-    Main scraper function with full logging and error handling
-    Returns list of new Job objects
-    """
     start_time = time.time()
     db = SessionLocal()
     
@@ -467,10 +506,6 @@ def scrape_category_with_logging(category_id: int) -> List[Job]:
 
 
 def scrape_all_categories() -> Dict[str, int]:
-    """
-    Scrape all active categories
-    Returns dict with stats
-    """
     db = SessionLocal()
     stats = {
         "total_categories": 0,

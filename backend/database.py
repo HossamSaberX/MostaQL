@@ -11,6 +11,8 @@ from typing import Generator
 import os
 
 from backend.config import settings
+from backend.enums import NotificationChannel, NotificationStatus
+from backend.utils.logger import app_logger
 
 Base = declarative_base()
 
@@ -96,8 +98,9 @@ class Notification(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     job_id = Column(Integer, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    channel = Column(String(20), nullable=True)
     sent_at = Column(TIMESTAMP, default=datetime.utcnow)
-    status = Column(String(20), default="pending")
+    status = Column(String(20), default=NotificationStatus.PENDING.value)
     error_message = Column(Text, nullable=True)
     
     user = relationship("User", back_populates="notifications")
@@ -105,6 +108,7 @@ class Notification(Base):
     
     __table_args__ = (
         Index('idx_notifications_status', 'status', 'sent_at'),
+        Index('idx_notifications_channel', 'channel'),
     )
 
 
@@ -191,18 +195,18 @@ def init_db():
         if to_create:
             db.add_all(to_create)
             db.commit()
-            print(f"✓ Added {len(to_create)} missing categories")
+            app_logger.info(f"✓ Added {len(to_create)} missing categories")
         else:
-            print(f"✓ All {len(desired_categories)} categories already exist")
+            app_logger.info(f"✓ All {len(desired_categories)} categories already exist")
     except Exception as e:
-        print(f"✗ Error initializing database: {e}")
+        app_logger.error(f"✗ Error initializing database: {e}")
         db.rollback()
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    print("Initializing database...")
+    app_logger.info("Initializing database...")
     init_db()
-    print("✓ Database initialization complete")
+    app_logger.info("✓ Database initialization complete")
 

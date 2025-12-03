@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from loguru import logger
 
 from backend.database import get_db, User
-from backend.services.channels import TelegramChannel
+from backend.services.notification_queue import send_telegram_message
 
 router = APIRouter()
 
@@ -36,25 +36,23 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
         logger.warning("Telegram webhook: No chat_id in message")
         return {"status": "ok"}
     
-    telegram = TelegramChannel()
-    
     if text == "/stop" or text == "/unsubscribe":
         user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
         if user:
             user.telegram_chat_id = None
             db.commit()
-            telegram.send(
+            send_telegram_message(
                 chat_id, 
                 "👋 وداعاً!", 
                 "تم إلغاء ربط حسابك بنجاح.\n\n"
                 "نأمل أن نراك مجدداً! إذا غيرت رأيك، يمكنك العودة للموقع وإعادة تفعيل التنبيهات في أي وقت."
             )
         else:
-            telegram.send(chat_id, "ℹ️ معلومة", "حسابك غير مرتبط بالفعل.")
+            send_telegram_message(chat_id, "ℹ️ معلومة", "حسابك غير مرتبط بالفعل.")
         return {"status": "ok"}
     
     if text == "/start" or text == "/help":
-        telegram.send(
+        send_telegram_message(
             chat_id,
             "🤖 أهلاً بك!",
             "لربط حسابك، يرجى استخدام الزر الموجود في الموقع بعد الاشتراك.\n"
@@ -72,7 +70,7 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
                 existing_user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
                 
                 if existing_user and existing_user.id != user.id:
-                    telegram.send(
+                    send_telegram_message(
                         chat_id,
                         "⚠️ تحذير",
                         f"هذا الحساب مرتبط بالفعل ببريد إلكتروني آخر ({escape(existing_user.email)}).\n"
@@ -84,7 +82,7 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
                 user.telegram_chat_id = chat_id
                 db.commit()
                 
-                telegram.send(
+                send_telegram_message(
                     chat_id,
                     "✅ تم الربط بنجاح!",
                     f"مرحباً! تم ربط حسابك ({escape(user.email)}) بنجاح.\n"
@@ -96,7 +94,7 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
             except IntegrityError as e:
                 db.rollback()
                 logger.error(f"IntegrityError linking chat_id {chat_id} to user {user.email}: {e}")
-                telegram.send(
+                send_telegram_message(
                     chat_id,
                     "❌ خطأ",
                     "حدث خطأ أثناء ربط الحساب. يرجى المحاولة مرة أخرى لاحقاً."
@@ -104,13 +102,13 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
             except Exception as e:
                 db.rollback()
                 logger.error(f"Unexpected error linking chat_id {chat_id} to user {user.email}: {e}")
-                telegram.send(
+                send_telegram_message(
                     chat_id,
                     "❌ خطأ",
                     "حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى لاحقاً."
                 )
         else:
-            telegram.send(
+            send_telegram_message(
                 chat_id,
                 "❌ خطأ",
                 "الرمز غير صحيح. يرجى التأكد من الرابط والمحاولة مرة أخرى."
