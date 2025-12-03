@@ -371,12 +371,17 @@ def enrich_jobs_with_hiring_rates(
             
             for attempt in range(attempts):
                 try:
+                    wait_time = 0
                     with lock:
                         now = time.time()
                         wait_time = rate_limit_delay - (now - request_lock)
                         if wait_time > 0:
-                            time.sleep(wait_time)
-                        request_lock = time.time()
+                            request_lock = now + wait_time
+                        else:
+                            request_lock = now
+                    
+                    if wait_time > 0:
+                        time.sleep(wait_time)
                     
                     rate = extract_hiring_rate(url)
                     return (job_id, rate)
@@ -429,8 +434,9 @@ def enrich_jobs_with_hiring_rates(
         db.commit()
         
         duration = time.time() - start_time
+        jobs_per_sec = len(job_ids) / duration if duration > 0 else 0
         logger.info(f"✓ Enriched {success_count}/{len(job_ids)} jobs with hiring rates in {duration:.2f}s "
-                   f"({len(job_ids)/duration:.1f} jobs/s)")
+                   f"({jobs_per_sec:.1f} jobs/s)")
         
     except Exception as e:
         logger.error(f"Error enriching jobs: {e}")

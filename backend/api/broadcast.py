@@ -108,9 +108,9 @@ async def broadcast_message(data: BroadcastRequest, db: Session = Depends(get_db
             _enqueue_email_broadcast(user, data.message)
             sent_emails += 1
     
-    app_logger.info(f"Broadcast: {sent_emails} emails queued, {sent_telegram} Telegram sent")
+    app_logger.info(f"Broadcast: {sent_emails} emails queued, {sent_telegram} Telegram messages queued")
     
     return {
-        "sent_emails": sent_emails,
-        "sent_telegram": sent_telegram
+        "queued_emails": sent_emails,
+        "queued_telegram": sent_telegram
     }
