@@ -1,8 +1,9 @@
 {
     email {$EMAIL}
+    acme_dns duckdns {$DUCKDNS_TOKEN}
 }
 
-{$DOMAIN:officerkpaid.duckdns.org} {
+{$DOMAIN}, {$DOMAIN_ALT} {
     reverse_proxy mostaql-app:8000
     
     encode gzip
@@ -23,7 +24,7 @@
     }
 }
 
-{$DB_DOMAIN:db.officerkpaid.duckdns.org} {
+{$DB_DOMAIN}, {$DB_DOMAIN_ALT} {
     reverse_proxy sqlite-web:8080
     
     basicauth {

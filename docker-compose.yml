@@ -54,8 +54,10 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     environment:
-      - DOMAIN=${DOMAIN:-officerkpaid.duckdns.org}
-      - DB_DOMAIN=${DB_DOMAIN:-db.officerkpaid.duckdns.org}
+      - DOMAIN=${DOMAIN:-mostaql.officerk.online}
+      - DOMAIN_ALT=${DOMAIN_ALT:-officerkpaid.duckdns.org}
+      - DB_DOMAIN=${DB_DOMAIN:-db.mostaql.officerk.online}
+      - DB_DOMAIN_ALT=${DB_DOMAIN_ALT:-db.officerkpaid.duckdns.org}
       - EMAIL=${EMAIL}
       - DUCKDNS_TOKEN=${DUCKDNS_TOKEN}
       - DB_ADMIN_USER=${DB_ADMIN_USER:-admin}
