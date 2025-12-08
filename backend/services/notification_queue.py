@@ -31,18 +31,24 @@ def send_telegram_message(chat_id: str, title: str, content: str) -> bool:
     try:
         response = requests.post(url, json=payload, timeout=10)
         response.raise_for_status()
+        app_logger.info(f"✓ Telegram message sent to chat_id {chat_id}")
         return True
-    except requests.exceptions.HTTPError:
+    except requests.exceptions.HTTPError as e:
         if response.status_code == 400 and "parse" in response.text.lower():
+            app_logger.warning(f"Telegram parse error for chat_id {chat_id}, retrying without HTML: {e}")
             payload["parse_mode"] = ""
             try:
                 response = requests.post(url, json=payload, timeout=10)
                 response.raise_for_status()
+                app_logger.info(f"✓ Telegram message sent (plain text) to chat_id {chat_id}")
                 return True
-            except Exception:
+            except Exception as retry_exc:
+                app_logger.error(f"✗ Telegram retry failed for chat_id {chat_id}: {retry_exc}")
                 return False
+        app_logger.error(f"✗ Telegram HTTP error for chat_id {chat_id}: {e}")
         return False
-    except Exception:
+    except Exception as e:
+        app_logger.error(f"✗ Telegram error for chat_id {chat_id}: {e}")
         return False
 
 
@@ -107,9 +113,15 @@ class BaseTaskQueue(ABC, Generic[T]):
                 continue
             try:
                 success = self._process_task(task)
+                if success:
+                    # app_logger.info(f"✓ {self._worker_name} task completed successfully")
+                    pass  # Individual processors (email/telegram) handle their own success logging
+                else:
+                    app_logger.warning(f"⚠ {self._worker_name} task returned failure")
+                
                 self._update_notification_status(task, success, None)
             except Exception as exc:
-                app_logger.error(f"{self._worker_name} task failed: {exc}")
+                app_logger.error(f"✗ {self._worker_name} task failed: {exc}")
                 self._update_notification_status(task, False, str(exc))
             finally:
                 self._queue.task_done()
