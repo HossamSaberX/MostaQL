@@ -1,6 +1,5 @@
 {
     email {$EMAIL}
-    acme_dns duckdns {$DUCKDNS_TOKEN}
 }
 
 {$DOMAIN:officerkpaid.duckdns.org} {
