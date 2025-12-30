@@ -9,6 +9,7 @@
 :root {
     --brand-primary: #2CABE3;
     --brand-primary-light: #E8F6FC;
+    --brand-primary-light-hover: #D6EEF8;
     --brand-primary-dark: #1E8BBF;
     --brand-secondary: #FFFFFF;
     --brand-tertiary: #000000;
@@ -168,6 +169,11 @@ body {
     border-color: var(--brand-primary);
 }
 
+/* Fallback for browsers without :has() support */
+.notification-option input[type="checkbox"]:checked ~ * {
+    color: var(--brand-primary);
+}
+
 .notification-option input[type="checkbox"] {
     width: 16px;
     height: 16px;
@@ -324,7 +330,13 @@ input[type="email"]::placeholder {
 }
 
 .category-item:has(input:checked):hover {
-    background: #D6EEF8;
+    background: var(--brand-primary-light-hover);
+}
+
+/* Fallback for browsers without :has() support */
+.category-item input[type="checkbox"]:checked ~ .category-label {
+    color: var(--brand-primary);
+    font-weight: 600;
 }
 
 .category-item input[type="checkbox"] {
@@ -785,13 +797,6 @@ form button:disabled {
 
 /* Focus visible styles for accessibility */
 *:focus-visible {
-    outline: 2px solid var(--brand-primary);
-    outline-offset: 2px;
-}
-
-button:focus-visible,
-input:focus-visible,
-a:focus-visible {
     outline: 2px solid var(--brand-primary);
     outline-offset: 2px;
 }
