@@ -26,21 +26,30 @@
 
 {$DB_DOMAIN}, {$DB_DOMAIN_ALT} {
     reverse_proxy sqlite-web:8080
-    
+
     basicauth {
         {$DB_ADMIN_USER:admin} {$DB_ADMIN_HASH}
     }
-    
+
     encode gzip
-    
+
     header {
         -Server
     }
-    
+
     log {
         output file /data/db-access.log {
             roll_size 10mb
             roll_keep 5
         }
+    }
+}
+
+http://82.22.174.237 {
+    @acme path /.well-known/acme-challenge/*
+    reverse_proxy @acme 172.18.0.1:8888
+
+    handle {
+        respond 404
     }
 }
