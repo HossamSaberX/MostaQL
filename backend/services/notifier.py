@@ -1,7 +1,7 @@
 """
 Job notification service.
 """
-from typing import List, Dict, Tuple
+from typing import Any, List, Dict, Optional, Tuple
 from html import escape
 from datetime import datetime
 from loguru import logger
@@ -45,7 +45,7 @@ def _build_email_tasks(
     jobs: List[Job],
     notification_rows: Dict[int, List[int]],
 ) -> List[EmailTask]:
-    job_payloads = [{"title": job.title, "url": job.url} for job in jobs]
+    job_payloads = [_build_job_payload(job) for job in jobs]
     tasks: List[EmailTask] = []
     
     active_users = [user for user in users if user.id in notification_rows]
@@ -79,15 +79,110 @@ def _build_email_tasks(
     return tasks
 
 
-def _filter_jobs_for_user(user: User, jobs: List[Job]) -> List[Job]:
-    if user.min_hiring_rate is None:
-        return jobs
-    
-    filtered = []
-    for job in jobs:
-        if job.hiring_rate is not None and job.hiring_rate >= user.min_hiring_rate:
-            filtered.append(job)
-    return filtered
+def _project_age_minutes(job: Job, now: Optional[datetime] = None) -> Optional[int]:
+    if job.published_at is None:
+        return None
+    now = now or datetime.utcnow()
+    return max(0, int((now - job.published_at).total_seconds() // 60))
+
+
+def _job_matches_user(user: User, job: Job, now: Optional[datetime] = None) -> bool:
+    if user.min_hiring_rate is not None:
+        if job.hiring_rate is None or job.hiring_rate < user.min_hiring_rate:
+            return False
+
+    if user.require_projects_in_progress:
+        if job.projects_in_progress is None or job.projects_in_progress <= 0:
+            return False
+
+    if user.require_ongoing_communications:
+        if job.ongoing_communications is None or job.ongoing_communications <= 0:
+            return False
+
+    if user.min_budget_usd is not None:
+        if job.budget_max_usd is None or job.budget_max_usd < user.min_budget_usd:
+            return False
+
+    if user.require_verified_client:
+        if not (
+            job.client_identity_verified is True
+            or job.client_payment_verified is True
+        ):
+            return False
+
+    if user.max_project_age_minutes is not None:
+        age_minutes = _project_age_minutes(job, now)
+        if age_minutes is None or age_minutes > user.max_project_age_minutes:
+            return False
+
+    return True
+
+
+def _filter_jobs_for_user(
+    user: User,
+    jobs: List[Job],
+    now: Optional[datetime] = None,
+) -> List[Job]:
+    return [job for job in jobs if _job_matches_user(user, job, now)]
+
+
+def _format_amount(value: Optional[float]) -> Optional[str]:
+    if value is None:
+        return None
+    numeric = float(value)
+    return f"{numeric:,.0f}" if numeric.is_integer() else f"{numeric:,.2f}"
+
+
+def _verification_label(job: Job) -> str:
+    if job.client_identity_verified is True or job.client_payment_verified is True:
+        verified_parts = []
+        if job.client_identity_verified is True:
+            verified_parts.append("الهوية")
+        if job.client_payment_verified is True:
+            verified_parts.append("الدفع")
+        return f"موثق ({' و'.join(verified_parts)})"
+    if job.client_identity_verified is False and job.client_payment_verified is False:
+        return "غير موثق"
+    return "غير معروف"
+
+
+def _build_job_payload(job: Job, now: Optional[datetime] = None) -> Dict[str, Any]:
+    min_budget = _format_amount(job.budget_min_usd)
+    max_budget = _format_amount(job.budget_max_usd)
+    budget = None
+    if min_budget and max_budget:
+        budget = f"${min_budget} - ${max_budget}" if min_budget != max_budget else f"${max_budget}"
+
+    return {
+        "title": job.title,
+        "url": job.url,
+        "budget": budget,
+        "hiring_rate": f"{job.hiring_rate:.2f}%" if job.hiring_rate is not None else None,
+        "projects_in_progress": job.projects_in_progress,
+        "ongoing_communications": job.ongoing_communications,
+        "verification": _verification_label(job),
+        "project_age_minutes": _project_age_minutes(job, now),
+    }
+
+
+def _telegram_job_html(payload: Dict[str, Any]) -> str:
+    signal_lines = []
+    if payload.get("budget"):
+        signal_lines.append(f"الميزانية: {escape(str(payload['budget']))}")
+    if payload.get("hiring_rate"):
+        signal_lines.append(f"معدل التوظيف: {escape(str(payload['hiring_rate']))}")
+    if payload.get("projects_in_progress") is not None:
+        signal_lines.append(f"مشاريع قيد التنفيذ: {payload['projects_in_progress']}")
+    if payload.get("ongoing_communications") is not None:
+        signal_lines.append(f"التواصلات الجارية: {payload['ongoing_communications']}")
+    signal_lines.append(f"التوثيق: {escape(str(payload['verification']))}")
+    if payload.get("project_age_minutes") is not None:
+        signal_lines.append(f"عمر المشروع: {payload['project_age_minutes']} دقيقة")
+
+    signals = "\n".join(f"\u200F  {line}" for line in signal_lines)
+    link = escape(str(payload["url"]), quote=True)
+    title = escape(str(payload["title"]))
+    return f"\u200F• <b>{title}</b>\n{signals}\n\u200F<a href=\"{link}\">راجع المشروع وتقدّم الآن</a>"
 
 
 def _create_notification(
@@ -163,12 +258,11 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
             
             if user.receive_telegram and user.telegram_chat_id:
                 user_jobs = user_job_map[user.id]
-                job_payloads = [{"title": job.title, "url": job.url} for job in user_jobs]
-                
-                msg_content = "\n".join([
-                    f"\u200F• <a href=\"{escape(j['url'])}\">{escape(j['title'])}</a>" 
-                    for j in job_payloads
-                ])
+                job_payloads = [_build_job_payload(job) for job in user_jobs]
+
+                msg_content = "\n\n".join(
+                    _telegram_job_html(payload) for payload in job_payloads
+                )
                 title = f"\u200Fوظائف جديدة في {category_name_escaped}"
                 
                 user_notification_ids = telegram_notification_rows.get(user.id, [])

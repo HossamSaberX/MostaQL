@@ -88,6 +88,15 @@
             if (data.min_hiring_rate !== null) {
                 document.getElementById('minHiringRate').value = data.min_hiring_rate;
             }
+            document.getElementById('requireProjectsInProgress').checked = Boolean(data.require_projects_in_progress);
+            document.getElementById('requireOngoingCommunications').checked = Boolean(data.require_ongoing_communications);
+            document.getElementById('requireVerifiedClient').checked = Boolean(data.require_verified_client);
+            if (data.min_budget_usd !== null) {
+                document.getElementById('minBudgetUsd').value = data.min_budget_usd;
+            }
+            if (data.max_project_age_minutes !== null) {
+                document.getElementById('maxProjectAgeMinutes').value = data.max_project_age_minutes;
+            }
             
             if (data.unsubscribed) {
                 showError('أنت غير مشترك حالياً');
@@ -106,6 +115,13 @@
         const receiveTelegram = document.getElementById('receiveTelegram').checked;
         const minHiringRateInput = document.getElementById('minHiringRate').value;
         const minHiringRate = minHiringRateInput ? parseFloat(minHiringRateInput) : null;
+        const minBudgetInput = document.getElementById('minBudgetUsd').value;
+        const minBudgetUsd = minBudgetInput ? parseFloat(minBudgetInput) : null;
+        const maxProjectAgeInput = document.getElementById('maxProjectAgeMinutes').value;
+        const maxProjectAgeMinutes = maxProjectAgeInput ? parseInt(maxProjectAgeInput, 10) : null;
+        const requireProjectsInProgress = document.getElementById('requireProjectsInProgress').checked;
+        const requireOngoingCommunications = document.getElementById('requireOngoingCommunications').checked;
+        const requireVerifiedClient = document.getElementById('requireVerifiedClient').checked;
         
         if (!receiveEmail && !receiveTelegram) {
             showError('يجب اختيار طريقة إشعار واحدة على الأقل');
@@ -127,7 +143,12 @@
                     token,
                     receive_email: receiveEmail,
                     receive_telegram: receiveTelegram,
-                    min_hiring_rate: minHiringRate
+                    min_hiring_rate: minHiringRate,
+                    require_projects_in_progress: requireProjectsInProgress,
+                    require_ongoing_communications: requireOngoingCommunications,
+                    min_budget_usd: minBudgetUsd,
+                    require_verified_client: requireVerifiedClient,
+                    max_project_age_minutes: maxProjectAgeMinutes
                 }),
             });
             

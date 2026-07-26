@@ -41,7 +41,12 @@ class SubscriptionService:
         category_ids: List[int],
         receive_email: bool = True,
         receive_telegram: bool = True,
-        min_hiring_rate: Optional[float] = None
+        min_hiring_rate: Optional[float] = None,
+        require_projects_in_progress: bool = False,
+        require_ongoing_communications: bool = False,
+        min_budget_usd: Optional[float] = None,
+        require_verified_client: bool = False,
+        max_project_age_minutes: Optional[int] = None,
     ) -> SubscriptionResult:
         normalized_ids = self._normalize_category_ids(category_ids)
         if not normalized_ids:
@@ -55,9 +60,31 @@ class SubscriptionService:
 
         user = self.db.query(User).filter(User.email == email).first()
         if user:
-            return self._handle_existing_user(user, normalized_ids, receive_email, receive_telegram, min_hiring_rate)
+            return self._handle_existing_user(
+                user,
+                normalized_ids,
+                receive_email,
+                receive_telegram,
+                min_hiring_rate,
+                require_projects_in_progress,
+                require_ongoing_communications,
+                min_budget_usd,
+                require_verified_client,
+                max_project_age_minutes,
+            )
 
-        return self._create_new_user(email, normalized_ids, receive_email, receive_telegram, min_hiring_rate)
+        return self._create_new_user(
+            email,
+            normalized_ids,
+            receive_email,
+            receive_telegram,
+            min_hiring_rate,
+            require_projects_in_progress,
+            require_ongoing_communications,
+            min_budget_usd,
+            require_verified_client,
+            max_project_age_minutes,
+        )
 
     def _normalize_category_ids(self, category_ids: List[int]) -> List[int]:
         return sorted({int(category_id) for category_id in category_ids})
@@ -76,6 +103,27 @@ class SubscriptionService:
                 UserCategory(user_id=user_id, category_id=category_id)
             )
 
+    @staticmethod
+    def _apply_preferences(
+        user: User,
+        receive_email: bool,
+        receive_telegram: bool,
+        min_hiring_rate: Optional[float],
+        require_projects_in_progress: bool,
+        require_ongoing_communications: bool,
+        min_budget_usd: Optional[float],
+        require_verified_client: bool,
+        max_project_age_minutes: Optional[int],
+    ) -> None:
+        user.receive_email = receive_email
+        user.receive_telegram = receive_telegram
+        user.min_hiring_rate = min_hiring_rate
+        user.require_projects_in_progress = require_projects_in_progress
+        user.require_ongoing_communications = require_ongoing_communications
+        user.min_budget_usd = min_budget_usd
+        user.require_verified_client = require_verified_client
+        user.max_project_age_minutes = max_project_age_minutes
+
     def _handle_existing_user(
         self,
         user: User,
@@ -83,11 +131,24 @@ class SubscriptionService:
         receive_email: bool,
         receive_telegram: bool,
         min_hiring_rate: Optional[float] = None,
+        require_projects_in_progress: bool = False,
+        require_ongoing_communications: bool = False,
+        min_budget_usd: Optional[float] = None,
+        require_verified_client: bool = False,
+        max_project_age_minutes: Optional[int] = None,
     ) -> SubscriptionResult:
         self._replace_user_categories(user.id, category_ids)
-        user.receive_email = receive_email
-        user.receive_telegram = receive_telegram
-        user.min_hiring_rate = min_hiring_rate
+        self._apply_preferences(
+            user,
+            receive_email,
+            receive_telegram,
+            min_hiring_rate,
+            require_projects_in_progress,
+            require_ongoing_communications,
+            min_budget_usd,
+            require_verified_client,
+            max_project_age_minutes,
+        )
 
         # Case 1: User is verified and active (just updating preferences)
         if user.verified and not user.unsubscribed:
@@ -134,6 +195,11 @@ class SubscriptionService:
         receive_email: bool,
         receive_telegram: bool,
         min_hiring_rate: Optional[float] = None,
+        require_projects_in_progress: bool = False,
+        require_ongoing_communications: bool = False,
+        min_budget_usd: Optional[float] = None,
+        require_verified_client: bool = False,
+        max_project_age_minutes: Optional[int] = None,
     ) -> SubscriptionResult:
         token = generate_token()
         user = User(
@@ -145,6 +211,11 @@ class SubscriptionService:
             receive_email=receive_email,
             receive_telegram=receive_telegram,
             min_hiring_rate=min_hiring_rate,
+            require_projects_in_progress=require_projects_in_progress,
+            require_ongoing_communications=require_ongoing_communications,
+            min_budget_usd=min_budget_usd,
+            require_verified_client=require_verified_client,
+            max_project_age_minutes=max_project_age_minutes,
         )
         self.db.add(user)
         self.db.flush()

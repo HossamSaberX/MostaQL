@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     http_request_timeout: int = 10
     scraper_max_workers: int = 4
     scraper_rate_limit_delay: float = 0.2
+    client_verification_cache_hours: int = 24
     max_categories_per_user: int = 10
 
     rate_limit_per_hour: int = 5

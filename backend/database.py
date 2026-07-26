@@ -31,6 +31,11 @@ class User(Base):
     receive_telegram = Column(Boolean, default=True)
     telegram_chat_id = Column(String(64), nullable=True, unique=True)
     min_hiring_rate = Column(Float, nullable=True)
+    require_projects_in_progress = Column(Boolean, default=False, nullable=False)
+    require_ongoing_communications = Column(Boolean, default=False, nullable=False)
+    min_budget_usd = Column(Float, nullable=True)
+    require_verified_client = Column(Boolean, default=False, nullable=False)
+    max_project_age_minutes = Column(Integer, nullable=True)
     last_notified_at = Column(TIMESTAMP, nullable=True)
     
     categories = relationship("UserCategory", back_populates="user", cascade="all, delete-orphan")
@@ -79,6 +84,15 @@ class Job(Base):
     url = Column(Text, unique=True, nullable=False)
     content_hash = Column(String(64), nullable=False)
     hiring_rate = Column(Float, nullable=True)
+    budget_min_usd = Column(Float, nullable=True)
+    budget_max_usd = Column(Float, nullable=True)
+    published_at = Column(TIMESTAMP, nullable=True)
+    projects_in_progress = Column(Integer, nullable=True)
+    ongoing_communications = Column(Integer, nullable=True)
+    client_profile_url = Column(Text, nullable=True)
+    client_identity_verified = Column(Boolean, nullable=True)
+    client_payment_verified = Column(Boolean, nullable=True)
+    client_verification_checked_at = Column(TIMESTAMP, nullable=True)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
     scraped_at = Column(TIMESTAMP, default=datetime.utcnow)
     
@@ -89,6 +103,23 @@ class Job(Base):
         Index('idx_jobs_category', 'category_id', 'scraped_at'),
         Index('idx_jobs_hash', 'content_hash'),
         Index('idx_jobs_hiring_rate', 'hiring_rate'),
+        Index('idx_jobs_published_at', 'published_at'),
+        Index('idx_jobs_client_profile_url', 'client_profile_url'),
+    )
+
+
+class ClientVerificationCache(Base):
+    __tablename__ = "client_verification_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    profile_url = Column(Text, unique=True, nullable=False)
+    identity_verified = Column(Boolean, nullable=True)
+    payment_verified = Column(Boolean, nullable=True)
+    checked_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_client_verification_profile_url', 'profile_url'),
+        Index('idx_client_verification_checked_at', 'checked_at'),
     )
 
 

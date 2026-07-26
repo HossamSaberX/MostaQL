@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from queue import Queue
 from threading import Event, Thread
 from datetime import datetime
-from typing import List, Dict, Optional, Generic, TypeVar
+from typing import Any, List, Dict, Optional, Generic, TypeVar
 
 import requests
 
@@ -69,7 +69,7 @@ class TelegramTask(BaseTask):
 class EmailTask(BaseTask):
     email: str
     category_name: str
-    jobs: List[Dict[str, str]]
+    jobs: List[Dict[str, Any]]
     unsubscribe_token: Optional[str] = None
     bcc: Optional[List[str]] = None
 

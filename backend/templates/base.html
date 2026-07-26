@@ -16,29 +16,54 @@
             </svg>
             <span>تيليجرام</span>
         </label>
-        
-        <div class="notification-option filter-option" title="تصفية الوظائف حسب معدل توظيف صاحب المشروع">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M16 6L18.29 8.29L13.41 13.17L9.41 9.17L2 16.59L3.41 18L9.41 12L13.41 16L19.71 9.71L22 12V6H16Z" fill="currentColor"/>
-            </svg>
-            <span>معدل توظيف &ge;</span>
-            <input
-                type="number"
-                id="minHiringRate"
-                name="min_hiring_rate"
-                class="inline-number-input"
-                min="0"
-                max="100"
-                step="5"
-                placeholder="0"
-                dir="ltr"
-                lang="en"
-                aria-label="الحد الأدنى لمعدل التوظيف بالنسبة المئوية"
-            >
-            <span class="unit">%</span>
-        </div>
     </div>
 </fieldset>
+
+<details class="smart-filters">
+    <summary>
+        <span>الفلاتر الذكية</span>
+        <span class="smart-filters-summary">ميزانية، نشاط العميل، التوثيق، السرعة</span>
+    </summary>
+    <div class="smart-filters-grid">
+        <label class="smart-filter-toggle" for="requireProjectsInProgress">
+            <input type="checkbox" id="requireProjectsInProgress" name="require_projects_in_progress">
+            <span>لديه مشاريع قيد التنفيذ</span>
+        </label>
+        <label class="smart-filter-toggle" for="requireOngoingCommunications">
+            <input type="checkbox" id="requireOngoingCommunications" name="require_ongoing_communications">
+            <span>لديه تواصلات جارية</span>
+        </label>
+        <label class="smart-filter-toggle" for="requireVerifiedClient">
+            <input type="checkbox" id="requireVerifiedClient" name="require_verified_client">
+            <span>عميل موثق الهوية أو الدفع</span>
+        </label>
+
+        <label class="smart-filter-field" for="minHiringRate">
+            <span>أدنى معدل توظيف</span>
+            <span class="smart-number-wrap">
+                <input type="number" id="minHiringRate" name="min_hiring_rate" min="0" max="100" step="5" placeholder="بدون حد" dir="ltr" lang="en">
+                <span class="unit">%</span>
+            </span>
+        </label>
+        <label class="smart-filter-field" for="minBudgetUsd">
+            <span>أدنى ميزانية</span>
+            <span class="smart-number-wrap">
+                <input type="number" id="minBudgetUsd" name="min_budget_usd" min="0" step="25" placeholder="بدون حد" dir="ltr" lang="en">
+                <span class="unit">$</span>
+            </span>
+        </label>
+        <label class="smart-filter-field" for="maxProjectAgeMinutes">
+            <span>أقصى عمر للمشروع</span>
+            <span class="smart-number-wrap">
+                <input type="number" id="maxProjectAgeMinutes" name="max_project_age_minutes" min="1" step="5" placeholder="بدون حد" dir="ltr" lang="en">
+                <span class="unit">دقيقة</span>
+            </span>
+        </label>
+    </div>
+    <p class="input-hint helper-text smart-filter-hint">
+        تُطبّق الفلاتر المفعّلة معاً. القيم غير المتاحة لا تجتاز الفلتر الذي يعتمد عليها.
+    </p>
+</details>
 {% endmacro %}
 
 <!DOCTYPE html>

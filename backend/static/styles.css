@@ -182,6 +182,97 @@ body {
     font-weight: 600;
 }
 
+.smart-filters {
+    margin: 8px 0 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-muted);
+    overflow: hidden;
+}
+
+.smart-filters summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    color: var(--brand-primary);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    list-style-position: inside;
+}
+
+.smart-filters-summary {
+    color: var(--hint-color);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.smart-filters-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 4px 12px 10px;
+}
+
+.smart-filter-toggle,
+.smart-filter-field {
+    min-height: 42px;
+    margin: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: #fff;
+    font-size: 12px;
+}
+
+.smart-filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.smart-filter-toggle input {
+    width: 17px;
+    height: 17px;
+    accent-color: var(--brand-primary);
+}
+
+.smart-filter-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.smart-number-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.smart-number-wrap input {
+    width: 82px;
+    padding: 5px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12px;
+}
+
+.smart-number-wrap input:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px rgba(44, 171, 227, 0.1);
+}
+
+.smart-filter-hint {
+    margin: 0;
+    padding: 0 12px 10px;
+}
+
 h1 {
     font-size: 26px;
     font-weight: 700;
@@ -598,5 +689,13 @@ form button:disabled {
     .categories {
         grid-template-columns: repeat(2, 1fr);
         gap: 8px;
+    }
+
+    .smart-filters-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .smart-filters-summary {
+        display: none;
     }
 }

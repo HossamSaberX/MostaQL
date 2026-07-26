@@ -8,7 +8,7 @@ from email.header import Header
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formataddr
-from typing import List, Dict
+from typing import Any, List, Dict
 from loguru import logger
 from backend.config import settings
 
@@ -38,7 +38,7 @@ class EmailService(ABC):
         self,
         email: str,
         category_name: str,
-        jobs: List[Dict[str, str]],
+        jobs: List[Dict[str, Any]],
         unsubscribe_token: str = None,
         bcc: List[str] = None
     ) -> bool:
@@ -220,7 +220,7 @@ class SMTPEmailService(EmailService):
         self,
         email: str,
         category_name: str,
-        jobs: List[Dict[str, str]],
+        jobs: List[Dict[str, Any]],
         unsubscribe_token: str = None,
         bcc: List[str] = None
     ) -> bool:

@@ -36,7 +36,12 @@ async def subscribe(
             data.category_ids,
             receive_email=data.receive_email,
             receive_telegram=data.receive_telegram,
-            min_hiring_rate=data.min_hiring_rate
+            min_hiring_rate=data.min_hiring_rate,
+            require_projects_in_progress=data.require_projects_in_progress,
+            require_ongoing_communications=data.require_ongoing_communications,
+            min_budget_usd=data.min_budget_usd,
+            require_verified_client=data.require_verified_client,
+            max_project_age_minutes=data.max_project_age_minutes,
         )
     except SubscriptionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)

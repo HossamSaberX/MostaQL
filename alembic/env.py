@@ -22,7 +22,17 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-from backend.database import Base, DATABASE_URL, User, Job, Category, UserCategory, Notification, ScraperLog
+from backend.database import (
+    Base,
+    DATABASE_URL,
+    User,
+    Job,
+    Category,
+    UserCategory,
+    Notification,
+    ScraperLog,
+    ClientVerificationCache,
+)
 
 target_metadata = Base.metadata
 

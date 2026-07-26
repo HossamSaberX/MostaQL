@@ -17,6 +17,11 @@ class SubscribeRequest(BaseModel):
     receive_email: bool = Field(default=True, description="Receive email notifications")
     receive_telegram: bool = Field(default=True, description="Receive Telegram notifications")
     min_hiring_rate: Optional[float] = Field(None, ge=0, le=100, description="Minimum hiring rate filter")
+    require_projects_in_progress: bool = Field(False, description="Require clients with projects under execution")
+    require_ongoing_communications: bool = Field(False, description="Require clients with ongoing communications")
+    min_budget_usd: Optional[float] = Field(None, ge=0, description="Minimum acceptable project budget in USD")
+    require_verified_client: bool = Field(False, description="Require verified client identity or payment")
+    max_project_age_minutes: Optional[int] = Field(None, ge=1, description="Maximum project age in minutes")
     
     class Config:
         json_schema_extra = {
@@ -25,7 +30,12 @@ class SubscribeRequest(BaseModel):
                 "category_ids": [1, 2],
                 "receive_email": True,
                 "receive_telegram": True,
-                "min_hiring_rate": 50.0
+                "min_hiring_rate": 50.0,
+                "require_projects_in_progress": False,
+                "require_ongoing_communications": True,
+                "min_budget_usd": 250.0,
+                "require_verified_client": False,
+                "max_project_age_minutes": 15
             }
         }
 
@@ -143,4 +153,9 @@ class PreferencesRequest(BaseModel):
     receive_email: bool = Field(..., description="Receive email notifications")
     receive_telegram: bool = Field(..., description="Receive Telegram notifications")
     min_hiring_rate: Optional[float] = Field(None, ge=0, le=100, description="Minimum hiring rate filter")
+    require_projects_in_progress: bool = Field(False, description="Require clients with projects under execution")
+    require_ongoing_communications: bool = Field(False, description="Require clients with ongoing communications")
+    min_budget_usd: Optional[float] = Field(None, ge=0, description="Minimum acceptable project budget in USD")
+    require_verified_client: bool = Field(False, description="Require verified client identity or payment")
+    max_project_age_minutes: Optional[int] = Field(None, ge=1, description="Maximum project age in minutes")
 

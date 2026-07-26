@@ -1,7 +1,8 @@
 """
 Shared email templates used by all email providers.
 """
-from typing import List, Dict
+from html import escape
+from typing import Any, List, Dict
 
 
 def get_verification_email_html(verify_url: str) -> str:
@@ -22,10 +23,41 @@ def get_verification_email_html(verify_url: str) -> str:
 </html>"""
 
 
-def get_job_notifications_html(category_name: str, jobs: List[Dict[str, str]], unsubscribe_url: str) -> str:
+def _job_signals_html(job: Dict[str, Any]) -> str:
+    signals = []
+    labels = (
+        ("budget", "الميزانية"),
+        ("hiring_rate", "معدل التوظيف"),
+        ("projects_in_progress", "مشاريع قيد التنفيذ"),
+        ("ongoing_communications", "التواصلات الجارية"),
+        ("verification", "التوثيق"),
+    )
+    for key, label in labels:
+        value = job.get(key)
+        if value is not None:
+            signals.append(
+                f'<span style="display: inline-block; margin: 3px 0 3px 8px; '
+                f'padding: 4px 8px; border-radius: 999px; background: #eef8fc; '
+                f'color: #24566b; font-size: 13px;">{label}: {escape(str(value))}</span>'
+            )
+    if job.get("project_age_minutes") is not None:
+        signals.append(
+            f'<span style="display: inline-block; margin: 3px 0 3px 8px; '
+            f'padding: 4px 8px; border-radius: 999px; background: #fff6e6; '
+            f'color: #7a4b00; font-size: 13px;">عمر المشروع: '
+            f'{escape(str(job["project_age_minutes"]))} دقيقة</span>'
+        )
+    return "".join(signals)
+
+
+def get_job_notifications_html(category_name: str, jobs: List[Dict[str, Any]], unsubscribe_url: str) -> str:
     """Generate job notifications email HTML"""
     jobs_html = "\n".join([
-        f'<div style="border: 1px solid #e0e0e0; border-radius: 5px; padding: 20px; margin-bottom: 15px; direction: rtl; text-align: right;"><h3 style="margin: 0 0 10px 0; color: #2c3e50;"><a href="{job["url"]}" style="color: #3498db; text-decoration: none; font-weight: bold; direction: rtl;">{job["title"]}</a></h3></div>'
+        f'<div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 15px; direction: rtl; text-align: right;">'
+        f'<h3 style="margin: 0 0 10px 0; color: #2c3e50;">{escape(str(job["title"]))}</h3>'
+        f'<div style="margin-bottom: 14px;">{_job_signals_html(job)}</div>'
+        f'<a href="{escape(str(job["url"]), quote=True)}" style="display: inline-block; background: #2cabe3; color: #fff !important; padding: 9px 16px; text-decoration: none; border-radius: 6px; font-weight: bold;">راجع المشروع وتقدّم الآن</a>'
+        f'</div>'
         for job in jobs
     ])
     
@@ -34,11 +66,11 @@ def get_job_notifications_html(category_name: str, jobs: List[Dict[str, str]], u
 <head><meta charset="UTF-8"></head>
 <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; direction: rtl; text-align: right;">
     <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; padding: 40px; direction: rtl;">
-        <h2 style="color: #2c3e50;">مشاريع جديدة في {category_name}</h2>
+        <h2 style="color: #2c3e50;">مشاريع جديدة في {escape(category_name)}</h2>
         <p style="color: #555; line-height: 1.6; font-size: 16px;">تم العثور على {len(jobs)} مشروع جديد</p>
         {jobs_html}
         <hr>
-        <small><a href="{unsubscribe_url}" style="color: #3498db; font-weight: 600; text-decoration: none;">إلغاء الاشتراك</a></small>
+        <small><a href="{escape(unsubscribe_url, quote=True)}" style="color: #3498db; font-weight: 600; text-decoration: none;">إلغاء الاشتراك</a></small>
     </div>
 </body>
 </html>"""

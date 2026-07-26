@@ -16,6 +16,11 @@ document.addEventListener('DOMContentLoaded', () => {
   loadCategories();
 });
 
+function readOptionalNumber(id) {
+  const value = document.getElementById(id).value.trim();
+  return value === '' ? null : Number(value);
+}
+
 async function loadCategories() {
   try {
     const response = await fetch(`${API_BASE_URL}/categories`);
@@ -94,8 +99,12 @@ form.addEventListener('submit', async (event) => {
 
   const receiveEmail = document.getElementById('receiveEmail').checked;
   const receiveTelegram = document.getElementById('receiveTelegram').checked;
-  const minHiringRateInput = document.getElementById('minHiringRate').value;
-  const minHiringRate = minHiringRateInput ? parseFloat(minHiringRateInput) : null;
+  const minHiringRate = readOptionalNumber('minHiringRate');
+  const minBudgetUsd = readOptionalNumber('minBudgetUsd');
+  const maxProjectAgeMinutes = readOptionalNumber('maxProjectAgeMinutes');
+  const requireProjectsInProgress = document.getElementById('requireProjectsInProgress').checked;
+  const requireOngoingCommunications = document.getElementById('requireOngoingCommunications').checked;
+  const requireVerifiedClient = document.getElementById('requireVerifiedClient').checked;
 
   if (!receiveEmail && !receiveTelegram) {
     toggleGlobalAlert(errorMessage, 'يجب اختيار طريقة إشعار واحدة على الأقل');
@@ -117,6 +126,11 @@ form.addEventListener('submit', async (event) => {
         receive_email: receiveEmail,
         receive_telegram: receiveTelegram,
         min_hiring_rate: minHiringRate,
+        require_projects_in_progress: requireProjectsInProgress,
+        require_ongoing_communications: requireOngoingCommunications,
+        min_budget_usd: minBudgetUsd,
+        require_verified_client: requireVerifiedClient,
+        max_project_age_minutes: maxProjectAgeMinutes,
       }),
     });
 

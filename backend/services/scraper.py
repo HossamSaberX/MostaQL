@@ -1,15 +1,26 @@
 import random
+import re
 import requests
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 from loguru import logger
 
-from backend.database import SessionLocal, Job, Category, ScraperLog
+from backend.database import (
+    SessionLocal,
+    Job,
+    Category,
+    ScraperLog,
+    User,
+    UserCategory,
+    ClientVerificationCache,
+)
 from backend.utils.security import hash_content
 from backend.config import settings
 
@@ -302,58 +313,319 @@ class RateLimitError(Exception):
     pass
 
 
-def extract_hiring_rate(job_url: str) -> Optional[float]:
-    try:
-        headers = get_headers()
-        response = requests.get(
-            job_url,
-            headers=headers,
-            timeout=settings.http_request_timeout
-        )
-        
-        if response.status_code == 429:
-            raise RateLimitError(f"Rate limited (429) for {job_url}")
-        
-        if response.status_code != 200:
-            return None
-            
-        soup = BeautifulSoup(response.content, 'lxml')
-        
-        widget = soup.find('div', attrs={'data-type': 'employer_widget'})
-        if not widget:
-            return None
-            
-        target_row = None
-        for row in widget.find_all('tr'):
-            if "معدل التوظيف" in row.get_text():
-                target_row = row
-                break
-        
-        if not target_row:
-            return None
-            
-        cells = target_row.find_all('td')
-        if len(cells) < 2:
-            return None
-            
-        rate_text = cells[1].get_text(strip=True)
-        
-        if "%" in rate_text:
-            return float(rate_text.replace('%', ''))
-        
+@dataclass(frozen=True)
+class ProjectDetails:
+    hiring_rate: Optional[float] = None
+    budget_min_usd: Optional[float] = None
+    budget_max_usd: Optional[float] = None
+    published_at: Optional[datetime] = None
+    projects_in_progress: Optional[int] = None
+    ongoing_communications: Optional[int] = None
+    client_profile_url: Optional[str] = None
+    client_identity_verified: Optional[bool] = None
+    client_payment_verified: Optional[bool] = None
+
+
+@dataclass(frozen=True)
+class VerificationDetails:
+    identity_verified: Optional[bool] = None
+    payment_verified: Optional[bool] = None
+
+
+_ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+
+
+def _normalize_text(value: str) -> str:
+    return " ".join(value.translate(_ARABIC_DIGITS).replace("\u200f", "").split())
+
+
+def _parse_decimal(value: Optional[str]) -> Optional[float]:
+    if not value:
         return None
-        
+    normalized = _normalize_text(value).replace("٬", "").replace(",", "").replace("٫", ".")
+    match = re.search(r"-?\d+(?:\.\d+)?", normalized)
+    return float(match.group(0)) if match else None
+
+
+def _parse_integer(value: Optional[str]) -> Optional[int]:
+    number = _parse_decimal(value)
+    return int(number) if number is not None else None
+
+
+def _extract_table_value(root, label: str) -> Optional[str]:
+    if not root:
+        return None
+    normalized_label = _normalize_text(label)
+    for row in root.find_all("tr"):
+        cells = row.find_all(["td", "th"], recursive=False)
+        if len(cells) < 2:
+            continue
+        if normalized_label in _normalize_text(cells[0].get_text(" ", strip=True)):
+            return cells[1].get_text(" ", strip=True)
+    return None
+
+
+def _extract_meta_value(soup: BeautifulSoup, label: str) -> Optional[str]:
+    normalized_label = _normalize_text(label)
+    for row in soup.select(".meta-row"):
+        label_element = row.select_one(".meta-label")
+        value_element = row.select_one(".meta-value")
+        if not label_element or not value_element:
+            continue
+        if normalized_label == _normalize_text(label_element.get_text(" ", strip=True)):
+            return value_element.get_text(" ", strip=True)
+    return None
+
+
+def _parse_budget(value: Optional[str]) -> Tuple[Optional[float], Optional[float]]:
+    if not value:
+        return None, None
+    normalized = _normalize_text(value).replace("٬", "").replace(",", "").replace("٫", ".")
+    amounts = [float(item) for item in re.findall(r"\d+(?:\.\d+)?", normalized)]
+    if not amounts:
+        return None, None
+    if len(amounts) == 1:
+        return amounts[0], amounts[0]
+    return min(amounts[0], amounts[-1]), max(amounts[0], amounts[-1])
+
+
+def _parse_relative_time(value: Optional[str], now: datetime) -> Optional[datetime]:
+    if not value:
+        return None
+    normalized = _normalize_text(value)
+    if "لحظ" in normalized or "الآن" in normalized:
+        return now
+
+    match = re.search(r"منذ\s+(?:(\d+)\s*)?([^\s]+)", normalized)
+    if not match:
+        return None
+    unit = match.group(2)
+    dual_units = {
+        "دقيقتين",
+        "ساعتين",
+        "يومين",
+        "أسبوعين",
+        "اسبوعين",
+        "شهرين",
+        "سنتين",
+        "عامين",
+    }
+    count = int(match.group(1)) if match.group(1) else (2 if unit in dual_units else 1)
+
+    if "دقيق" in unit:
+        delta = timedelta(minutes=count)
+    elif "ساع" in unit:
+        delta = timedelta(hours=count)
+    elif "يوم" in unit or "أيام" in unit:
+        delta = timedelta(days=count)
+    elif "أسبوع" in unit or "اسبوع" in unit:
+        delta = timedelta(weeks=count)
+    elif "شهر" in unit or "أشهر" in unit:
+        delta = timedelta(days=30 * count)
+    elif "سن" in unit or "عام" in unit:
+        delta = timedelta(days=365 * count)
+    else:
+        return None
+    return now - delta
+
+
+def _parse_published_at(soup: BeautifulSoup, now: datetime) -> Optional[datetime]:
+    time_element = soup.select_one('time[itemprop="datePublished"]')
+    if time_element:
+        raw_datetime = time_element.get("datetime") or time_element.get("title")
+        if raw_datetime:
+            try:
+                parsed = datetime.fromisoformat(raw_datetime.strip())
+                if parsed.tzinfo:
+                    parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+                return parsed
+            except ValueError:
+                pass
+        relative = _parse_relative_time(time_element.get_text(" ", strip=True), now)
+        if relative:
+            return relative
+    return _parse_relative_time(_extract_meta_value(soup, "تاريخ النشر"), now)
+
+
+def _verification_value(root, label: str) -> Optional[bool]:
+    normalized_label = _normalize_text(label)
+    for cell in root.find_all(["td", "li"]):
+        text = _normalize_text(cell.get_text(" ", strip=True))
+        if normalized_label not in text:
+            continue
+        if "غير موثق" in text or "لم يتم التوثيق" in text:
+            return False
+        if cell.select_one("i.text-success.fa-check, i.fa-check.text-success"):
+            return True
+        return False
+    return None
+
+
+def parse_client_verification(html: str) -> VerificationDetails:
+    soup = BeautifulSoup(html, "lxml")
+    verification_panel = None
+    for heading in soup.find_all(["h2", "h3", "h4", "h5"]):
+        if "توثيقات" in _normalize_text(heading.get_text(" ", strip=True)):
+            verification_panel = heading.find_parent(class_="panel") or heading.parent
+            break
+    if not verification_panel:
+        return VerificationDetails()
+    return VerificationDetails(
+        identity_verified=_verification_value(verification_panel, "الهوية الشخصية"),
+        payment_verified=_verification_value(verification_panel, "وسيلة الدفع"),
+    )
+
+
+def parse_project_details(html: str, now: Optional[datetime] = None) -> ProjectDetails:
+    now = now or datetime.utcnow()
+    soup = BeautifulSoup(html, "lxml")
+    widget = soup.find("div", attrs={"data-type": "employer_widget"})
+
+    hiring_rate_text = _extract_table_value(widget, "معدل التوظيف")
+    hiring_rate = _parse_decimal(hiring_rate_text) if hiring_rate_text and "%" in hiring_rate_text else None
+    budget_min, budget_max = _parse_budget(_extract_meta_value(soup, "الميزانية"))
+
+    profile_url = None
+    identity_verified = None
+    payment_verified = None
+    if widget:
+        profile_link = widget.select_one('a[href*="/u/"]')
+        if profile_link and profile_link.get("href"):
+            profile_url = urljoin(settings.mostaql_base_url, profile_link["href"])
+        if widget.select_one('[title*="هوية موثقة"], [alt*="هوية موثقة"]'):
+            identity_verified = True
+        identity_verified = _verification_value(widget, "الهوية الشخصية") if identity_verified is None else True
+        payment_verified = _verification_value(widget, "وسيلة الدفع")
+
+    return ProjectDetails(
+        hiring_rate=hiring_rate,
+        budget_min_usd=budget_min,
+        budget_max_usd=budget_max,
+        published_at=_parse_published_at(soup, now),
+        projects_in_progress=_parse_integer(_extract_table_value(widget, "مشاريع قيد التنفيذ")),
+        ongoing_communications=_parse_integer(_extract_table_value(widget, "التواصلات الجارية")),
+        client_profile_url=profile_url,
+        client_identity_verified=identity_verified,
+        client_payment_verified=payment_verified,
+    )
+
+
+def _get_page_content(url: str) -> Optional[str]:
+    response = requests.get(
+        url,
+        headers=get_headers(),
+        timeout=settings.http_request_timeout,
+        allow_redirects=True,
+    )
+    if response.status_code == 429:
+        raise RateLimitError(f"Rate limited (429) for {url}")
+    if response.status_code != 200:
+        return None
+    response.encoding = response.apparent_encoding or response.encoding or "utf-8"
+    return response.text
+
+
+def extract_project_details(job_url: str) -> ProjectDetails:
+    try:
+        content = _get_page_content(job_url)
+        return parse_project_details(content) if content else ProjectDetails()
     except RateLimitError:
         raise
-    except Exception as e:
-        logger.warning(f"Failed to extract hiring rate for {job_url}: {e}")
-        return None
+    except Exception as exc:
+        logger.warning(f"Failed to extract project details for {job_url}: {exc}")
+        return ProjectDetails()
 
 
-def enrich_jobs_with_hiring_rates(
-    job_ids: List[int], 
-    max_workers: int = settings.scraper_max_workers, 
-    rate_limit_delay: float = settings.scraper_rate_limit_delay
+def extract_hiring_rate(job_url: str) -> Optional[float]:
+    """Backward-compatible wrapper around the project-details parser."""
+    return extract_project_details(job_url).hiring_rate
+
+
+def extract_client_verification(profile_url: str) -> Optional[VerificationDetails]:
+    content = _get_page_content(profile_url)
+    return parse_client_verification(content) if content else None
+
+
+def _fetch_client_verification_with_backoff(
+    profile_url: str,
+    attempts: int = 3,
+) -> Optional[VerificationDetails]:
+    for attempt in range(attempts):
+        try:
+            return extract_client_verification(profile_url)
+        except RateLimitError:
+            if attempt == attempts - 1:
+                raise
+            backoff = 2 ** (attempt + 1)
+            logger.warning(
+                f"Rate limited for client profile, waiting {backoff}s "
+                f"(attempt {attempt + 1}/{attempts})"
+            )
+            time.sleep(backoff)
+        except Exception as exc:
+            if attempt == attempts - 1:
+                logger.warning(f"Failed to fetch client verification for {profile_url}: {exc}")
+                return None
+            time.sleep(2 ** attempt)
+    return None
+
+
+def _cache_is_fresh(checked_at: Optional[datetime], now: datetime) -> bool:
+    if not checked_at:
+        return False
+    return checked_at >= now - timedelta(hours=settings.client_verification_cache_hours)
+
+
+def _get_cached_client_verification(
+    db,
+    profile_url: str,
+    now: datetime,
+    fetcher=None,
+) -> Tuple[Optional[bool], Optional[bool], Optional[datetime]]:
+    cache = (
+        db.query(ClientVerificationCache)
+        .filter(ClientVerificationCache.profile_url == profile_url)
+        .first()
+    )
+    if cache and _cache_is_fresh(cache.checked_at, now):
+        return cache.identity_verified, cache.payment_verified, cache.checked_at
+
+    verification = (fetcher or _fetch_client_verification_with_backoff)(profile_url)
+    if verification is None:
+        return None, None, None
+
+    if cache is None:
+        cache = ClientVerificationCache(profile_url=profile_url)
+        db.add(cache)
+    cache.identity_verified = verification.identity_verified
+    cache.payment_verified = verification.payment_verified
+    cache.checked_at = now
+    db.flush()
+    return cache.identity_verified, cache.payment_verified, cache.checked_at
+
+
+def _categories_requiring_verification(db, jobs: List[Job]) -> set[int]:
+    category_ids = {job.category_id for job in jobs}
+    if not category_ids:
+        return set()
+    rows = (
+        db.query(UserCategory.category_id)
+        .join(User, User.id == UserCategory.user_id)
+        .filter(
+            UserCategory.category_id.in_(category_ids),
+            User.unsubscribed.is_(False),
+            User.require_verified_client.is_(True),
+        )
+        .distinct()
+        .all()
+    )
+    return {row[0] for row in rows}
+
+
+def enrich_jobs_with_project_details(
+    job_ids: List[int],
+    max_workers: int = settings.scraper_max_workers,
+    rate_limit_delay: float = settings.scraper_rate_limit_delay,
 ) -> None:
     if not job_ids:
         return
@@ -362,87 +634,133 @@ def enrich_jobs_with_hiring_rates(
     try:
         jobs = db.query(Job).filter(Job.id.in_(job_ids)).all()
         job_urls = [(job.id, job.url) for job in jobs]
-        
+        verification_categories = _categories_requiring_verification(db, jobs)
+
         request_lock = time.time()
         lock = threading.Lock()
-        
-        def fetch_rate_with_backoff(job_id: int, url: str, attempts: int = 3) -> Tuple[int, Optional[float]]:
+
+        def fetch_with_backoff(job_id: int, url: str, attempts: int = 3) -> Tuple[int, ProjectDetails]:
             nonlocal request_lock
-            
             for attempt in range(attempts):
                 try:
-                    wait_time = 0
                     with lock:
-                        now = time.time()
-                        wait_time = rate_limit_delay - (now - request_lock)
-                        if wait_time > 0:
-                            request_lock = now + wait_time
-                        else:
-                            request_lock = now
-                    
+                        now_monotonic = time.time()
+                        wait_time = rate_limit_delay - (now_monotonic - request_lock)
+                        request_lock = now_monotonic + max(wait_time, 0)
                     if wait_time > 0:
                         time.sleep(wait_time)
-                    
-                    rate = extract_hiring_rate(url)
-                    return (job_id, rate)
-                    
+                    return job_id, extract_project_details(url)
                 except RateLimitError:
                     if attempt < attempts - 1:
                         backoff = 2 ** (attempt + 1)
-                        logger.warning(f"Rate limited for job {job_id}, waiting {backoff}s (attempt {attempt + 1}/{attempts})")
+                        logger.warning(
+                            f"Rate limited for job {job_id}, waiting {backoff}s "
+                            f"(attempt {attempt + 1}/{attempts})"
+                        )
                         time.sleep(backoff)
                     else:
                         logger.error(f"Rate limit exceeded for job {job_id} after {attempts} attempts")
-                        return (job_id, None)
-                        
-                except Exception as e:
+                except Exception as exc:
                     if attempt < attempts - 1:
                         backoff = 2 ** attempt
-                        logger.debug(f"Attempt {attempt + 1}/{attempts} failed for job {job_id}, retrying in {backoff}s: {e}")
+                        logger.debug(
+                            f"Attempt {attempt + 1}/{attempts} failed for job {job_id}, "
+                            f"retrying in {backoff}s: {exc}"
+                        )
                         time.sleep(backoff)
                     else:
-                        logger.warning(f"Failed to fetch hiring rate for job {job_id} after {attempts} attempts: {e}")
-                        return (job_id, None)
-            
-            return (job_id, None)
-        
-        results: Dict[int, Optional[float]] = {}
-        start_time = time.time()
-        
+                        logger.warning(f"Failed to enrich job {job_id} after {attempts} attempts: {exc}")
+            return job_id, ProjectDetails()
+
+        results: Dict[int, ProjectDetails] = {}
+        started_at = time.time()
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_job = {
-                executor.submit(fetch_rate_with_backoff, job_id, url): job_id 
+            futures = {
+                executor.submit(fetch_with_backoff, job_id, url): job_id
                 for job_id, url in job_urls
             }
-            
-            for future in as_completed(future_to_job):
-                job_id = future_to_job[future]
+            for future in as_completed(futures):
+                job_id = futures[future]
                 try:
-                    job_id, rate = future.result()
-                    results[job_id] = rate
-                except Exception as e:
-                    logger.warning(f"Unexpected error for job {job_id}: {e}")
-                    results[job_id] = None
-        
-        success_count = 0
+                    result_job_id, details = future.result()
+                    results[result_job_id] = details
+                except Exception as exc:
+                    logger.warning(f"Unexpected enrichment error for job {job_id}: {exc}")
+                    results[job_id] = ProjectDetails()
+
+        enriched_count = 0
+        verification_by_url: Dict[str, Tuple[Optional[bool], Optional[bool], Optional[datetime]]] = {}
         for job in jobs:
-            rate = results.get(job.id)
-            if rate is not None:
-                job.hiring_rate = rate
-                success_count += 1
-        
+            details = results.get(job.id, ProjectDetails())
+            job.hiring_rate = details.hiring_rate
+            job.budget_min_usd = details.budget_min_usd
+            job.budget_max_usd = details.budget_max_usd
+            job.published_at = details.published_at
+            job.projects_in_progress = details.projects_in_progress
+            job.ongoing_communications = details.ongoing_communications
+            job.client_profile_url = details.client_profile_url
+            job.client_identity_verified = details.client_identity_verified
+            job.client_payment_verified = details.client_payment_verified
+
+            if (
+                job.category_id in verification_categories
+                and details.client_profile_url
+                and not (
+                    details.client_identity_verified is True
+                    or details.client_payment_verified is True
+                )
+            ):
+                if details.client_profile_url not in verification_by_url:
+                    try:
+                        verification_by_url[details.client_profile_url] = _get_cached_client_verification(
+                            db,
+                            details.client_profile_url,
+                            datetime.utcnow(),
+                        )
+                    except RateLimitError:
+                        logger.warning(f"Rate limited while checking client profile {details.client_profile_url}")
+                        verification_by_url[details.client_profile_url] = (None, None, None)
+                    except Exception as exc:
+                        logger.warning(f"Failed to verify client profile {details.client_profile_url}: {exc}")
+                        verification_by_url[details.client_profile_url] = (None, None, None)
+                identity, payment, checked_at = verification_by_url[details.client_profile_url]
+                job.client_identity_verified = identity
+                job.client_payment_verified = payment
+                job.client_verification_checked_at = checked_at
+
+            if any(
+                value is not None
+                for value in (
+                    details.hiring_rate,
+                    details.budget_max_usd,
+                    details.published_at,
+                    details.projects_in_progress,
+                    details.ongoing_communications,
+                )
+            ):
+                enriched_count += 1
+
         db.commit()
-        
-        duration = time.time() - start_time
+        duration = time.time() - started_at
         jobs_per_sec = len(job_ids) / duration if duration > 0 else 0
-        logger.info(f"✓ Enriched {success_count}/{len(job_ids)} jobs with hiring rates in {duration:.2f}s "
-                   f"({jobs_per_sec:.1f} jobs/s)")
-        
-    except Exception as e:
-        logger.error(f"Error enriching jobs: {e}")
+        logger.info(
+            f"✓ Enriched {enriched_count}/{len(job_ids)} jobs with smart alert details "
+            f"in {duration:.2f}s ({jobs_per_sec:.1f} jobs/s)"
+        )
+    except Exception as exc:
+        logger.error(f"Error enriching jobs: {exc}")
         db.rollback()
     finally:
         db.close()
+
+
+def enrich_jobs_with_hiring_rates(
+    job_ids: List[int],
+    max_workers: int = settings.scraper_max_workers,
+    rate_limit_delay: float = settings.scraper_rate_limit_delay,
+) -> None:
+    """Backward-compatible alias for callers that still use the old name."""
+    enrich_jobs_with_project_details(job_ids, max_workers, rate_limit_delay)
 
 
 def scrape_category_with_logging(category_id: int) -> List[Job]:
@@ -464,7 +782,7 @@ def scrape_category_with_logging(category_id: int) -> List[Job]:
         if new_jobs:
             try:
                 job_ids = [j.id for j in new_jobs]
-                enrich_jobs_with_hiring_rates(job_ids)
+                enrich_jobs_with_project_details(job_ids)
                 
                 db_refresh = SessionLocal()
                 for i, job in enumerate(new_jobs):
