@@ -268,4 +268,26 @@ class SMTPEmailService(EmailService):
         except Exception as e:
             logger.error(f"Failed to send unsubscribe email to {email}: {e}")
             return False
+    
+    def send_announcement(self, email: str, message: str, unsubscribe_token: str = None) -> bool:
+        """Send an announcement/update email (shared implementation)"""
+        from backend.config import settings
+        from backend.services.email.templates import get_announcement_html
+        
+        try:
+            unsubscribe_url = f"{settings.base_url}/unsubscribe-request.html"
+            if unsubscribe_token:
+                unsubscribe_url = f"{settings.base_url}/api/unsubscribe/{unsubscribe_token}"
+            
+            html_content = get_announcement_html(message, unsubscribe_url)
+            
+            return self._send_email(
+                to_email=email,
+                subject="تحديث جديد - خدمة تنبيهات مستقل",
+                html_body=html_content
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to send announcement to {email}: {e}")
+            return False
 

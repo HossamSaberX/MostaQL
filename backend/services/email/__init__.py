@@ -102,3 +102,11 @@ def send_unsubscribe_email(email: str, token: str) -> bool:
     
     return success
 
+
+def send_announcement(email: str, message: str, unsubscribe_token: str = None) -> bool:
+    """
+    Send announcement email using the configured provider.
+    """
+    service = get_email_service()
+    return service.send_announcement(email, message, unsubscribe_token)
+

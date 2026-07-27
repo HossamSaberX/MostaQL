@@ -76,6 +76,22 @@ def get_job_notifications_html(category_name: str, jobs: List[Dict[str, Any]], u
 </html>"""
 
 
+def get_announcement_html(message: str, unsubscribe_url: str) -> str:
+    safe_message = escape(message).replace("\n", "<br>")
+    return f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head><meta charset="UTF-8"></head>
+<body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; direction: rtl; text-align: right;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; padding: 40px; direction: rtl; box-shadow: 0 2px 10px rgba(0,0,0,0.08);">
+        <h2 style="color: #2c3e50; margin: 0 0 24px 0;">إعلان من خدمة تنبيهات مستقل</h2>
+        <div style="color: #444; line-height: 2; font-size: 16px;">{safe_message}</div>
+        <hr style="margin: 32px 0 16px 0; border: none; border-top: 1px solid #eee;">
+        <small><a href="{escape(unsubscribe_url, quote=True)}" style="color: #999; text-decoration: none;">إلغاء الاشتراك من الإعلانات</a></small>
+    </div>
+</body>
+</html>"""
+
+
 def get_unsubscribe_email_html(unsubscribe_url: str) -> str:
     """Generate unsubscribe email HTML"""
     return f"""<!DOCTYPE html>

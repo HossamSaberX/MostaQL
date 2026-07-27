@@ -6,11 +6,10 @@ from html import escape
 
 from backend.database import get_db, User
 from backend.services.notification_queue import (
-    email_task_queue, 
     telegram_task_queue, 
-    EmailTask, 
     TelegramTask
 )
+from backend.services.email import send_announcement
 from backend.config import settings
 from backend.utils.logger import app_logger
 
@@ -37,17 +36,7 @@ def _enqueue_telegram_broadcast(user: User, message: str) -> None:
 
 
 def _enqueue_email_broadcast(user: User, message: str) -> None:
-    email_task_queue.enqueue(
-        EmailTask(
-            notification_ids=[],
-            user_ids=[user.id],
-            email=user.email,
-            category_name="إعلان",
-            jobs=[{"title": message, "url": settings.base_url}],
-            unsubscribe_token=user.token,
-            bcc=None
-        )
-    )
+    send_announcement(user.email, message, user.token)
 
 
 @router.post("/broadcast")
