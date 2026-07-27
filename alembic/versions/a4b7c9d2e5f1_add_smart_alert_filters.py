@@ -8,6 +8,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 revision: str = "a4b7c9d2e5f1"
@@ -17,28 +18,30 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "client_verification_cache",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("profile_url", sa.Text(), nullable=False),
-        sa.Column("identity_verified", sa.Boolean(), nullable=True),
-        sa.Column("payment_verified", sa.Boolean(), nullable=True),
-        sa.Column("checked_at", sa.TIMESTAMP(), nullable=False),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("profile_url"),
-    )
-    op.create_index(
-        "idx_client_verification_profile_url",
-        "client_verification_cache",
-        ["profile_url"],
-        unique=False,
-    )
-    op.create_index(
-        "idx_client_verification_checked_at",
-        "client_verification_cache",
-        ["checked_at"],
-        unique=False,
-    )
+    inspector = inspect(op.get_bind())
+    if "client_verification_cache" not in inspector.get_table_names():
+        op.create_table(
+            "client_verification_cache",
+            sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+            sa.Column("profile_url", sa.Text(), nullable=False),
+            sa.Column("identity_verified", sa.Boolean(), nullable=True),
+            sa.Column("payment_verified", sa.Boolean(), nullable=True),
+            sa.Column("checked_at", sa.TIMESTAMP(), nullable=False),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("profile_url"),
+        )
+        op.create_index(
+            "idx_client_verification_profile_url",
+            "client_verification_cache",
+            ["profile_url"],
+            unique=False,
+        )
+        op.create_index(
+            "idx_client_verification_checked_at",
+            "client_verification_cache",
+            ["checked_at"],
+            unique=False,
+        )
 
     with op.batch_alter_table("users") as batch_op:
         batch_op.add_column(

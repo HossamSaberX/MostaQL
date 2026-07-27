@@ -1,10 +1,12 @@
 """
 Test endpoints for manual scraper triggering and debugging
 """
+from datetime import datetime
+from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
-from typing import List
 from loguru import logger
 import requests
 from bs4 import BeautifulSoup
@@ -33,34 +35,56 @@ class TestJobWithRateRequest(BaseModel):
     category_id: int
     title: str
     url: str
-    hiring_rate: float = None
+    hiring_rate: Optional[float] = None
+    budget_min_usd: Optional[float] = None
+    budget_max_usd: Optional[float] = None
+    published_at: Optional[datetime] = None
+    projects_in_progress: Optional[int] = None
+    ongoing_communications: Optional[int] = None
+    client_profile_url: Optional[str] = None
+    client_identity_verified: Optional[bool] = None
+    client_payment_verified: Optional[bool] = None
 
 
 @router.post("/simulate-job")
 async def simulate_job(data: TestJobWithRateRequest, db: Session = Depends(get_db)):
     """
-    Simulate a new job with a specific hiring rate to test filtering logic.
+    Simulate a new job with smart-filter fields to test filtering logic.
     
     Example:
     POST /api/test/simulate-job
     {
         "category_id": 1,
-        "title": "Test Job with 80% Hiring Rate",
+        "title": "Test Job with Smart Filters",
         "url": "https://mostaql.com/project/test-80",
-        "hiring_rate": 80.0
+        "hiring_rate": 80.0,
+        "budget_min_usd": 300,
+        "budget_max_usd": 500,
+        "published_at": "2026-07-27T10:00:00",
+        "projects_in_progress": 2,
+        "ongoing_communications": 3,
+        "client_identity_verified": true,
+        "client_payment_verified": false
     }
     """
     category = db.query(Category).filter(Category.id == data.category_id).first()
     if not category:
         raise HTTPException(404, "Category not found")
     
-    # Create fake job
     job = Job(
         title=data.title,
         url=data.url,
         content_hash=f"test_{data.url}",
         category_id=data.category_id,
-        hiring_rate=data.hiring_rate
+        hiring_rate=data.hiring_rate,
+        budget_min_usd=data.budget_min_usd,
+        budget_max_usd=data.budget_max_usd,
+        published_at=data.published_at,
+        projects_in_progress=data.projects_in_progress,
+        ongoing_communications=data.ongoing_communications,
+        client_profile_url=data.client_profile_url,
+        client_identity_verified=data.client_identity_verified,
+        client_payment_verified=data.client_payment_verified,
     )
     
     # Check if exists to avoid unique constraint error
@@ -80,6 +104,13 @@ async def simulate_job(data: TestJobWithRateRequest, db: Session = Depends(get_d
         "status": "success",
         "job_id": job.id,
         "hiring_rate": job.hiring_rate,
+        "budget_min_usd": job.budget_min_usd,
+        "budget_max_usd": job.budget_max_usd,
+        "published_at": str(job.published_at) if job.published_at else None,
+        "projects_in_progress": job.projects_in_progress,
+        "ongoing_communications": job.ongoing_communications,
+        "client_identity_verified": job.client_identity_verified,
+        "client_payment_verified": job.client_payment_verified,
         "notification_result": result
     }
 
