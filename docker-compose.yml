@@ -35,9 +35,7 @@ services:
       retries: 3
 
   caddy:
-    build:
-      context: ./caddy
-      dockerfile: Dockerfile
+    image: caddy:2
     container_name: caddy-proxy
     restart: unless-stopped
     ports:
