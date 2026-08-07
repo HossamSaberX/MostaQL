@@ -201,6 +201,7 @@ def init_db():
         from backend.config import settings
         base_url = settings.mostaql_base_url
         desired_categories = [
+            ("ذكاء اصطناعي وتعلم الآلة", "ai-machine-learning"),
             ("برمجة، تطوير المواقع والتطبيقات", "development"),
             ("تصميم، فيديو وصوتيات", "design"),
             ("كتابة، تحرير، ترجمة ولغات", "writing-translation"),

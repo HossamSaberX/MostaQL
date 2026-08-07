@@ -51,10 +51,19 @@
 
         <div class="form-group">
             <label for="categories">اختر التصنيفات</label>
+            <input
+                type="search"
+                id="categorySearch"
+                class="category-search"
+                placeholder="بحث في التصنيفات"
+                autocomplete="off"
+                aria-label="بحث في التصنيفات"
+            >
             <div class="categories" id="categories" role="group" aria-describedby="categoryError categoryHint">
                 <div class="loading" aria-live="polite">جاري تحميل التصنيفات...</div>
             </div>
             <p id="categoryHint" class="input-hint helper-text">اختر التخصصات التي تهمك للحصول على التنبيهات</p>
+            <p id="categorySearchEmpty" class="input-hint helper-text category-search-empty" role="status" hidden>لا توجد تصنيفات مطابقة.</p>
             <p id="categoryError" class="input-hint error-text" role="alert">يجب اختيار تصنيف واحد على الأقل</p>
         </div>
 
@@ -69,6 +78,6 @@
 <script>
     const telegramBotUsername = "{{ telegram_bot_username }}";
 </script>
-<script src="/assets/script.js?v=3" defer></script>
+<script src="/assets/script.js?v=4" defer></script>
 {% endblock %}
 
