@@ -310,6 +310,27 @@ input[type="email"]:focus {
     outline: none;
     border-color: var(--brand-primary);
 }
+.category-search {
+    width: 100%;
+    margin-bottom: 6px;
+    padding: 8px 12px;
+    border: 1px solid #D1D1D1;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    direction: rtl;
+    transition: border-color 0.2s ease;
+}
+
+.category-search:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+}
+
+.category-search-empty {
+    margin: 5px 0 0;
+}
+
 
 .categories {
     display: grid;

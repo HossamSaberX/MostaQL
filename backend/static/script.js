@@ -9,11 +9,14 @@ const successMessage = document.getElementById('successMessage');
 const errorMessage = document.getElementById('errorMessage');
 const emailError = document.getElementById('emailError');
 const categoryError = document.getElementById('categoryError');
+const categorySearch = document.getElementById('categorySearch');
+const categorySearchEmpty = document.getElementById('categorySearchEmpty');
 const submitBtn = document.getElementById('submitBtn');
 const form = document.getElementById('subscribeForm');
 
 document.addEventListener('DOMContentLoaded', () => {
   loadCategories();
+  categorySearch?.addEventListener('input', () => filterCategories(categorySearch.value));
 });
 
 function readOptionalNumber(id) {
@@ -45,11 +48,27 @@ async function loadCategories() {
 
       categoriesContainer.appendChild(wrapper);
     });
+    filterCategories(categorySearch?.value || '');
   } catch (err) {
     console.error(err);
     categoriesContainer.innerHTML = '<p class="loading">تعذر تحميل التصنيفات. يرجى تحديث الصفحة.</p>';
   }
 }
+function filterCategories(query) {
+  if (!categoriesContainer) return;
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  let visibleCount = 0;
+
+  categoriesContainer.querySelectorAll('.category-item').forEach((item) => {
+    const label = item.querySelector('.category-label')?.textContent || '';
+    const visible = !normalizedQuery || label.toLocaleLowerCase().includes(normalizedQuery);
+    item.hidden = !visible;
+    if (visible) visibleCount += 1;
+  });
+
+  if (categorySearchEmpty) categorySearchEmpty.hidden = visibleCount > 0;
+}
+
 
 function setAlert(element, message) {
   if (!element) return;
