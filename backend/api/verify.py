@@ -11,8 +11,13 @@ import os
 from backend.database import get_db, User
 from backend.utils.security import is_token_expired
 from backend.config import settings
-from backend.models import UnsubscribeRequest, PreferencesRequest
+from backend.models import UnsubscribeRequest, PreferencesRequest, FollowedClientRequest
 from backend.services.email import send_unsubscribe_email
+from backend.services.client_tracking import (
+    FollowedClientError,
+    add_followed_client,
+    remove_followed_client,
+)
 
 templates_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
 templates = Jinja2Templates(directory=templates_dir)
@@ -151,6 +156,14 @@ async def get_preferences(token: str, db: Session = Depends(get_db)):
             "min_budget_usd": user.min_budget_usd,
             "require_verified_client": user.require_verified_client,
             "max_project_age_minutes": user.max_project_age_minutes,
+            "followed_clients": [
+                {
+                    "id": followed_client.id,
+                    "profile_url": followed_client.profile_url,
+                    "label": followed_client.label,
+                }
+                for followed_client in user.followed_clients
+            ],
         })
         
     except HTTPException:
@@ -210,6 +223,71 @@ async def update_preferences(
         logger.error(f"Error updating preferences: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail="حدث خطأ أثناء حفظ التفضيلات")
+
+
+@router.post("/preferences/clients")
+async def add_previously_completed_client(
+    data: FollowedClientRequest,
+    db: Session = Depends(get_db),
+):
+    """Watch every new project published by a client from a user's past work."""
+
+    user = db.query(User).filter(User.token == data.token).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="رابط غير صالح")
+    if user.unsubscribed:
+        raise HTTPException(status_code=400, detail="الحساب غير مشترك حالياً")
+
+    try:
+        followed_client = add_followed_client(
+            db,
+            user.id,
+            data.profile_url,
+            data.label,
+            max_clients=settings.max_followed_clients_per_user,
+        )
+        return JSONResponse(
+            content={
+                "message": "تمت إضافة العميل إلى قائمة المتابعة. ستصلك مشاريعه الجديدة من أي تصنيف.",
+                "status": "saved",
+                "client": {
+                    "id": followed_client.id,
+                    "profile_url": followed_client.profile_url,
+                    "label": followed_client.label,
+                },
+            }
+        )
+    except FollowedClientError as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Error adding followed client for {user.email}: {exc}")
+        raise HTTPException(status_code=500, detail="حدث خطأ أثناء إضافة العميل")
+
+
+@router.delete("/preferences/clients/{followed_client_id}")
+async def remove_previously_completed_client(
+    followed_client_id: int,
+    token: str,
+    db: Session = Depends(get_db),
+):
+    """Stop watching one previously completed client."""
+
+    user = db.query(User).filter(User.token == token).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="رابط غير صالح")
+
+    try:
+        remove_followed_client(db, user.id, followed_client_id)
+        return JSONResponse(content={"message": "تم حذف العميل من قائمة المتابعة"})
+    except FollowedClientError as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Error removing followed client {followed_client_id}: {exc}")
+        raise HTTPException(status_code=500, detail="حدث خطأ أثناء حذف العميل")
 
 
 @router.post("/unsubscribe/{token}")

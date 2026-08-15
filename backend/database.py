@@ -2,8 +2,8 @@
 Database models and connection setup for Mostaql Job Notifier
 """
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Boolean, 
-    Float, Text, TIMESTAMP, ForeignKey, Index, event
+    create_engine, Column, Integer, String, Boolean,
+    Float, Text, TIMESTAMP, ForeignKey, Index, UniqueConstraint, event
 )
 from sqlalchemy.orm import sessionmaker, relationship, declarative_base
 from datetime import datetime
@@ -39,6 +39,7 @@ class User(Base):
     last_notified_at = Column(TIMESTAMP, nullable=True)
     
     categories = relationship("UserCategory", back_populates="user", cascade="all, delete-orphan")
+    followed_clients = relationship("FollowedClient", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     
     __table_args__ = (
@@ -73,6 +74,26 @@ class UserCategory(Base):
     
     __table_args__ = (
         Index('idx_user_categories_user', 'user_id'),
+    )
+
+
+class FollowedClient(Base):
+    """A Mostaql client whose future projects should alert this user."""
+
+    __tablename__ = "followed_clients"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    profile_url = Column(Text, nullable=False)
+    label = Column(String(120), nullable=True)
+    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="followed_clients")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "profile_url", name="uq_followed_clients_user_profile"),
+        Index("idx_followed_clients_user", "user_id"),
+        Index("idx_followed_clients_profile_url", "profile_url"),
     )
 
 

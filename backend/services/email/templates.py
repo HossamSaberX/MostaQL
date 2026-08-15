@@ -25,6 +25,13 @@ def get_verification_email_html(verify_url: str) -> str:
 
 def _job_signals_html(job: Dict[str, Any]) -> str:
     signals = []
+    if job.get("followed_client"):
+        signals.append(
+            f'<span style="display: inline-block; margin: 3px 0 3px 8px; '
+            f'padding: 4px 8px; border-radius: 999px; background: #fff6e6; '
+            f'color: #7a4b00; font-size: 13px;">تنبيه عميل تتابعه: '
+            f'{escape(str(job["followed_client"]))}</span>'
+        )
     labels = (
         ("budget", "الميزانية"),
         ("hiring_rate", "معدل التوظيف"),

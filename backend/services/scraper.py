@@ -23,6 +23,7 @@ from backend.database import (
 )
 from backend.utils.security import hash_content
 from backend.config import settings
+from backend.services.client_tracking import normalize_client_profile_url, FollowedClientError
 
 
 USER_AGENTS = [
@@ -532,7 +533,12 @@ def parse_project_details(html: str, now: Optional[datetime] = None) -> ProjectD
     if widget:
         profile_link = widget.select_one('a[href*="/u/"]')
         if profile_link and profile_link.get("href"):
-            profile_url = urljoin(settings.mostaql_base_url, profile_link["href"])
+            try:
+                profile_url = normalize_client_profile_url(
+                    urljoin(settings.mostaql_base_url, profile_link["href"])
+                )
+            except FollowedClientError:
+                logger.debug("Ignoring an invalid client profile link in project details")
         if widget.select_one('[title*="هوية موثقة"], [alt*="هوية موثقة"]'):
             identity_verified = True
         identity_verified = _verification_value(widget, "الهوية الشخصية") if identity_verified is None else True

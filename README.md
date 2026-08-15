@@ -12,6 +12,7 @@ MostaQL is a specialized job scraping and notification system designed to monito
 *   **Stable Project Identity**: Deduplicates by the canonical project URL, so different projects with the same title are retained.
 *   **Hiring Rate Enrichment**: Fetches individual job pages to parse hiring rates (budget/success score).
 *   **Precise Rate Filters**: Minimum hiring rates accept hundredths (for example, `50.01%`) and match inclusively (`rate >= minimum`).
+*   **Past-Client Alerts**: Save Mostaql profile URLs for clients you previously completed work for. Every new project from a saved client is matched across all categories, regardless of the category subscriptions or smart filters.
 *   **Anti-Ban Strategy**: Implements User-Agent rotation, random delays, and connection validation to maintain access reliability.
 
 ### Notification Architecture
@@ -19,6 +20,7 @@ MostaQL is a specialized job scraping and notification system designed to monito
 *   **Producer-Consumer Queue**: Implements a non-blocking custom Thread and Queue system. The scraper produces tasks while a background worker consumes them.
 *   **Dual-Channel Support**: Delivers notifications via Email (SMTP/Brevo) and Telegram (Bot API).
 *   **Smart Grouping**: Batches users with identical job sets for efficient processing while respecting individual `min_hiring_rate` filters.
+*   **Duplicate-Safe Client Matching**: A project matching both a category subscription and a followed client creates one notification per channel, with the followed-client reason shown in the alert.
 *   **Graceful Lifecycle**: Uses a `Lifespan` context manager to ensure the queue finishes processing and worker threads exit cleanly during shutdown.
 
 ### Database & Performance
@@ -72,6 +74,10 @@ MostaQL is a specialized job scraping and notification system designed to monito
     ```bash
     python -m backend.main
     ```
+
+### Follow clients from past work
+
+Open the preferences link from any notification, expand **عملائي السابقون**, and add the client's Mostaql profile URL (for example, `https://mostaql.com/u/client-name`). The watcher uses the canonical client profile URL, so trailing slashes and profile sub-pages are handled consistently. The next project published by that client will notify you even when it belongs to a category you did not select.
 
 ## Configuration
 

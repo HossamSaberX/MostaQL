@@ -159,3 +159,11 @@ class PreferencesRequest(BaseModel):
     require_verified_client: bool = Field(False, description="Require verified client identity or payment")
     max_project_age_minutes: Optional[int] = Field(None, ge=1, description="Maximum project age in minutes")
 
+
+class FollowedClientRequest(BaseModel):
+    """Request to add or update a client whose future projects are watched."""
+
+    token: str = Field(..., description="User token")
+    profile_url: str = Field(..., min_length=8, max_length=500, description="Mostaql client profile URL")
+    label: Optional[str] = Field(None, max_length=120, description="Optional name for this client")
+

@@ -592,6 +592,131 @@ form button:disabled {
     color: var(--error);
 }
 
+.followed-clients {
+    margin-top: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-muted);
+    overflow: hidden;
+}
+
+.followed-clients summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    color: var(--brand-primary);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    list-style-position: inside;
+}
+
+.followed-clients-summary {
+    color: var(--hint-color);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.followed-clients > .helper-text {
+    margin: 0;
+    padding: 0 12px 10px;
+}
+
+.followed-client-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) auto;
+    gap: 6px;
+    padding: 0 12px 8px;
+}
+
+.followed-client-form input {
+    min-width: 0;
+    width: 100%;
+    padding: 7px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12px;
+}
+
+.followed-client-form input:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px rgba(44, 171, 227, 0.1);
+}
+
+.secondary-btn {
+    padding: 7px 10px;
+    border: 1px solid var(--brand-primary);
+    border-radius: 6px;
+    background: var(--brand-primary);
+    color: #fff;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.secondary-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.followed-clients-list {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0 12px 12px;
+    list-style: none;
+}
+
+.followed-client-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    background: #fff;
+    font-size: 12px;
+}
+
+.followed-client-item a {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--brand-primary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: ltr;
+    text-align: left;
+}
+
+.remove-followed-client {
+    flex: 0 0 auto;
+    padding: 3px 7px;
+    border: 1px solid var(--error);
+    border-radius: 5px;
+    background: #fff;
+    color: var(--error);
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.remove-followed-client:hover {
+    background: var(--error);
+    color: #fff;
+}
+
+.followed-clients .error-text {
+    margin: 0;
+    padding: 0 12px 8px;
+}
+
 .danger-btn {
     width: 100%;
     padding: 10px;
@@ -722,5 +847,13 @@ form button:disabled {
 
     .smart-filters-summary {
         display: none;
+    }
+
+    .followed-clients-summary {
+        display: none;
+    }
+
+    .followed-client-form {
+        grid-template-columns: 1fr;
     }
 }

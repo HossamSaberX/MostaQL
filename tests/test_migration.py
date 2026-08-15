@@ -44,6 +44,9 @@ def test_upgrade_head_adds_smart_alert_schema(tmp_path):
         "ongoing_communications",
     } <= job_columns
     assert "client_verification_cache" in inspector.get_table_names()
+    assert "followed_clients" in inspector.get_table_names()
+    followed_columns = {column["name"] for column in inspector.get_columns("followed_clients")}
+    assert {"user_id", "profile_url", "label", "created_at"} <= followed_columns
 
 
 def test_upgrade_preserves_existing_users_with_disabled_filter_defaults(tmp_path):

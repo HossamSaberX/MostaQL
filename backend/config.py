@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     scraper_rate_limit_delay: float = 0.2
     client_verification_cache_hours: int = 24
     max_categories_per_user: int = 10
+    max_followed_clients_per_user: int = 50
 
     rate_limit_per_hour: int = 5
 

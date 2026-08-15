@@ -32,6 +32,7 @@ from backend.database import (
     Notification,
     ScraperLog,
     ClientVerificationCache,
+    FollowedClient,
 )
 
 target_metadata = Base.metadata
