@@ -18,6 +18,7 @@ from backend.database import (
 )
 from backend.enums import NotificationChannel, NotificationStatus
 from backend.services.notification_queue import EmailTask, TelegramTask, email_task_queue, telegram_task_queue
+from backend.services.client_tracking import client_profile_key
 from backend.config import settings
 
 
@@ -156,11 +157,11 @@ def _is_category_subscriber(user: User, category_id: int) -> bool:
 
 
 def _followed_client_for_job(user: User, job: Job) -> Optional[FollowedClient]:
-    profile_url = getattr(job, "client_profile_url", None)
-    if not profile_url:
+    job_profile_key = client_profile_key(getattr(job, "client_profile_url", None))
+    if not job_profile_key:
         return None
     for followed_client in getattr(user, "followed_clients", []):
-        if followed_client.profile_url == profile_url:
+        if client_profile_key(followed_client.profile_url) == job_profile_key:
             return followed_client
     return None
 

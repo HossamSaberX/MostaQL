@@ -16,6 +16,7 @@ from backend.services import notifier
 from backend.services.client_tracking import (
     FollowedClientError,
     add_followed_client,
+    client_profile_key,
     normalize_client_profile_url,
 )
 
@@ -41,6 +42,8 @@ def response_json(response):
 def test_profile_urls_are_canonical_and_restricted_to_mostaql():
     assert normalize_client_profile_url("https://www.mostaql.com/u/client/") == "https://mostaql.com/u/client"
     assert normalize_client_profile_url("https://mostaql.com/u/client/reviews") == "https://mostaql.com/u/client"
+    assert normalize_client_profile_url("/u/client/projects") == "https://mostaql.com/u/client"
+    assert client_profile_key("https://www.mostaql.com/u/Client/notes") == "client"
 
     with pytest.raises(FollowedClientError):
         normalize_client_profile_url("https://evil.example/u/client")
@@ -161,3 +164,44 @@ def test_followed_client_does_not_match_a_different_profile(monkeypatch):
 
     assert result["notifications"] == 0
     assert emails == []
+
+
+def test_followed_client_matching_ignores_profile_subpages_and_host_casing(monkeypatch):
+    session = make_session()
+    user = User(
+        id=1,
+        email="past-client@example.com",
+        token="token",
+        verified=True,
+        unsubscribed=False,
+        receive_email=True,
+        receive_telegram=False,
+    )
+    session.add_all(
+        [
+            user,
+            FollowedClient(user_id=1, profile_url="https://mostaql.com/u/Client"),
+            Job(
+                id=1,
+                title="مشروع جديد من ملف خاص",
+                url="https://mostaql.com/project/202",
+                content_hash="hash",
+                category_id=1,
+                # This is the shape Mostaql can expose from a project page;
+                # it may return 403 when opened directly but still identifies
+                # the owner unambiguously.
+                client_profile_url="https://www.mostaql.com/u/client/notes",
+            ),
+        ]
+    )
+    session.commit()
+
+    emails = []
+    monkeypatch.setattr(notifier, "SessionLocal", sessionmaker(bind=session.get_bind()))
+    monkeypatch.setattr(notifier.email_task_queue, "enqueue", emails.append)
+
+    result = notifier.process_new_jobs([session.query(Job).first()], category_id=1)
+
+    assert result["notifications"] == 1
+    assert len(emails) == 1
+    assert emails[0].jobs[0]["followed_client"] == "https://mostaql.com/u/Client"

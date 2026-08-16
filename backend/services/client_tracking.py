@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from sqlalchemy.orm import Session
 
@@ -32,7 +32,20 @@ def normalize_client_profile_url(value: str) -> str:
     if not raw:
         raise FollowedClientError("أدخل رابط ملف العميل في مستقل")
 
-    parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+    # Project pages can expose absolute links, site-relative links, or a
+    # profile sub-page such as ``/u/name/projects``.  Resolve the relative
+    # forms before validating the host so a copied link from the page works
+    # just like the absolute URL shown in the browser.
+    if raw.startswith("//"):
+        candidate = f"https:{raw}"
+    elif raw.startswith("/"):
+        candidate = urljoin(settings.mostaql_base_url, raw)
+    elif "://" in raw:
+        candidate = raw
+    else:
+        candidate = f"https://{raw}"
+
+    parsed = urlparse(candidate)
     expected_host = (urlparse(settings.mostaql_base_url).hostname or "mostaql.com").lower()
     host = (parsed.hostname or "").lower().rstrip(".")
     allowed_hosts = {expected_host, f"www.{expected_host}"}
@@ -48,6 +61,32 @@ def normalize_client_profile_url(value: str) -> str:
         raise FollowedClientError("رابط العميل يجب أن يكون بصيغة https://mostaql.com/u/اسم-العميل")
 
     return f"https://{expected_host}/u/{parts[1]}"
+
+
+def client_profile_key(value: Optional[str]) -> Optional[str]:
+    """Return the stable Mostaql account key used for alert matching.
+
+    The profile page itself may be private, deleted, or return a 403 to the
+    current viewer.  A followed-client alert must not depend on fetching that
+    page: the project page still exposes the owner's ``/u/<username>`` link.
+    Canonicalising both values at match time also protects existing rows that
+    were stored before URL normalisation was added.
+    """
+
+    if not value:
+        return None
+    try:
+        canonical_url = normalize_client_profile_url(value)
+    except FollowedClientError:
+        return None
+
+    path_parts = [part for part in urlparse(canonical_url).path.split("/") if part]
+    if len(path_parts) < 2 or path_parts[0].lower() != "u":
+        return None
+    # Mostaql usernames are account identifiers rather than display names;
+    # compare case-insensitively so copied links with different casing still
+    # identify the same owner.
+    return path_parts[1].casefold()
 
 
 def normalize_client_label(value: Optional[str]) -> Optional[str]:

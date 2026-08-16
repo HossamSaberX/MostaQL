@@ -12,7 +12,7 @@ MostaQL is a specialized job scraping and notification system designed to monito
 *   **Stable Project Identity**: Deduplicates by the canonical project URL, so different projects with the same title are retained.
 *   **Hiring Rate Enrichment**: Fetches individual job pages to parse hiring rates (budget/success score).
 *   **Precise Rate Filters**: Minimum hiring rates accept hundredths (for example, `50.01%`) and match inclusively (`rate >= minimum`).
-*   **Past-Client Alerts**: Save Mostaql profile URLs for clients you previously completed work for. Every new project from a saved client is matched across all categories, regardless of the category subscriptions or smart filters.
+*   **Past-Client Alerts**: Save Mostaql profile URLs for clients you previously completed work for. Every new project from a saved client is matched across all categories, regardless of the category subscriptions or smart filters. Matching uses the stable `/u/<username>` identity from the project page, so a private/deleted profile (HTTP 403) does not disable alerts.
 *   **Anti-Ban Strategy**: Implements User-Agent rotation, random delays, and connection validation to maintain access reliability.
 
 ### Notification Architecture
@@ -78,6 +78,8 @@ MostaQL is a specialized job scraping and notification system designed to monito
 ### Follow clients from past work
 
 Open the preferences link from any notification, expand **عملائي السابقون**, and add the client's Mostaql profile URL (for example, `https://mostaql.com/u/client-name`). The watcher uses the canonical client profile URL, so trailing slashes and profile sub-pages are handled consistently. The next project published by that client will notify you even when it belongs to a category you did not select.
+
+The alert worker fetches Mostaql pages itself with a public HTTP request; it does not use the cookies or login state of your Chrome/in-app browser. Logging in can help you open a private client page manually, but signing in or out will not turn server-side alerts on or off.
 
 ## Configuration
 
