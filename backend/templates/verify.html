@@ -14,6 +14,13 @@
         <p class="input-hint helper-text" style="margin-top: 12px;">احصل على الإشعارات فوراً على جوالك</p>
     </section>
 
+    <section id="preferencesSection" style="display: none; margin-bottom: 24px; text-align: center;">
+        <a id="preferencesBtn" href="#" class="primary-btn" style="display: inline-block; text-decoration: none;">
+            إدارة التفضيلات والعملاء السابقين
+        </a>
+        <p class="input-hint helper-text" style="margin-top: 12px;">فعّل الفلاتر الذكية وأضف عملاءك السابقين لتصلك مشاريعهم من أي تصنيف.</p>
+    </section>
+
     <a class="helper-text" href="/">← العودة للصفحة الرئيسية</a>
 </article>
 {% endblock %}
@@ -25,6 +32,8 @@
     const content = document.getElementById('statusContent');
     const telegramSection = document.getElementById('telegramSection');
     const telegramBtn = document.getElementById('telegramBtn');
+    const preferencesSection = document.getElementById('preferencesSection');
+    const preferencesBtn = document.getElementById('preferencesBtn');
     
     // Inject from backend
     const botUsername = "{{ telegram_bot_username }}";
@@ -68,6 +77,12 @@
     if ((status === 'success' || status === 'already_verified') && token && botUsername) {
         telegramBtn.href = `https://t.me/${botUsername}?start=${token}`;
         telegramSection.style.display = 'block';
+    }
+
+    // Give verified users a visible path to smart filters and past-client alerts.
+    if ((status === 'success' || status === 'already_verified') && token) {
+        preferencesBtn.href = `/api/unsubscribe/${encodeURIComponent(token)}`;
+        preferencesSection.style.display = 'block';
     }
 </script>
 {% endblock %}

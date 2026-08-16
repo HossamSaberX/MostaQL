@@ -261,7 +261,7 @@ class SMTPEmailService(EmailService):
             
             return self._send_email(
                 to_email=email,
-                subject="تأكيد إلغاء الاشتراك - خدمة إشعارات مستقل",
+                subject="رابط إدارة الاشتراك - خدمة إشعارات مستقل",
                 html_body=html_content
             )
             

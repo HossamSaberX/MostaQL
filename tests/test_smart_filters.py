@@ -134,6 +134,8 @@ def test_notification_payload_and_email_explain_why_the_job_matched():
     assert "مشاريع قيد التنفيذ" in html
     assert "التواصلات الجارية" in html
     assert "راجع المشروع وتقدّم الآن" in html
+    assert "إدارة التفضيلات والعملاء السابقين" in html
+    assert "https://example.com/unsubscribe" in html
 
     telegram_html = _telegram_job_html(payload)
     assert "الميزانية" in telegram_html

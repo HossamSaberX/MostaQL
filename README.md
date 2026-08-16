@@ -9,6 +9,7 @@ MostaQL is a specialized job scraping and notification system designed to monito
 ### Core Logic & Scraping
 
 *   **Complete Polling**: Scans each category listing (including bounded pagination) every poll so multiple projects published in the same minute are not hidden behind an unchanged first row. Normal polls stop after the first already-known page to limit traffic.
+*   **Near-Real-Time Alerts**: Polling starts at application startup and repeats every two minutes by default. Deployments can set `SCRAPER_POLL_INTERVAL_SECONDS` (minimum five seconds) for a faster cycle; Mostaql does not provide a push webhook, so delivery is not zero-latency.
 *   **Stable Project Identity**: Deduplicates by the canonical project URL, so different projects with the same title are retained.
 *   **Hiring Rate Enrichment**: Fetches individual job pages to parse hiring rates (budget/success score).
 *   **Precise Rate Filters**: Minimum hiring rates accept hundredths (for example, `50.01%`) and match inclusively (`rate >= minimum`).
@@ -77,7 +78,7 @@ MostaQL is a specialized job scraping and notification system designed to monito
 
 ### Follow clients from past work
 
-Open the preferences link from any notification, expand **عملائي السابقون**, and add the client's Mostaql profile URL (for example, `https://mostaql.com/u/client-name`). The watcher uses the canonical client profile URL, so trailing slashes and profile sub-pages are handled consistently. The next project published by that client will notify you even when it belongs to a category you did not select.
+After confirming your email, click **إدارة التفضيلات والعملاء السابقين** on the confirmation page. You can also use the same button in any notification email. Then expand **عملائي السابقون** and add the client's Mostaql profile URL (for example, `https://mostaql.com/u/client-name`). The watcher uses the canonical client profile URL, so trailing slashes and profile sub-pages are handled consistently. The next project published by that client will notify you even when it belongs to a category you did not select.
 
 The alert worker fetches Mostaql pages itself with a public HTTP request; it does not use the cookies or login state of your Chrome/in-app browser. Logging in can help you open a private client page manually, but signing in or out will not turn server-side alerts on or off.
 

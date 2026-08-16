@@ -3,8 +3,8 @@
 {% block content %}
 <article class="card">
     <header class="header">
-        <h1>إلغاء الاشتراك</h1>
-        <p>أدخل بريدك الإلكتروني لإلغاء الاشتراك من الإشعارات</p>
+        <h1>إدارة الاشتراك</h1>
+        <p>أدخل بريدك الإلكتروني لإرسال رابط إدارة التفضيلات والتنبيهات</p>
     </header>
     
     <form id="unsubscribeForm">
@@ -13,7 +13,7 @@
             <input type="email" id="email" required placeholder="name@example.com" dir="ltr" lang="en" autocomplete="email">
         </div>
         
-        <button type="submit" id="submitBtn" class="form-action">إلغاء الاشتراك</button>
+        <button type="submit" id="submitBtn" class="form-action">إرسال رابط الإدارة</button>
     </form>
     
     <div id="message" class="message" style="display: none;" role="alert" aria-live="polite"></div>
@@ -49,7 +49,7 @@
             
             if (response.ok) {
                 messageDiv.className = 'message success';
-                messageDiv.textContent = data.message || 'تم إرسال رابط إلغاء الاشتراك إلى بريدك الإلكتروني.';
+                messageDiv.textContent = data.message || 'تم إرسال رابط إدارة التفضيلات إلى بريدك الإلكتروني.';
                 form.reset();
             } else {
                 messageDiv.className = 'message error';
@@ -60,7 +60,7 @@
             messageDiv.textContent = 'حدث خطأ في الاتصال. يرجى التحقق من الإنترنت.';
         } finally {
             submitBtn.disabled = false;
-            submitBtn.textContent = 'إلغاء الاشتراك';
+            submitBtn.textContent = 'إرسال رابط الإدارة';
             messageDiv.style.display = 'block';
         }
     });

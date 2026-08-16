@@ -1,5 +1,6 @@
 import asyncio
 import json
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -21,6 +22,24 @@ def make_session():
 
 def response_json(response):
     return json.loads(response.body.decode("utf-8"))
+
+
+def test_confirmation_page_exposes_preferences_entry_point():
+    template = Path(__file__).parents[1] / "backend" / "templates" / "verify.html"
+    html = template.read_text(encoding="utf-8")
+
+    assert 'id="preferencesSection"' in html
+    assert 'id="preferencesBtn"' in html
+    assert "إدارة التفضيلات والعملاء السابقين" in html
+    assert "/api/unsubscribe/" in html
+
+
+def test_landing_page_exposes_existing_subscription_preferences_link():
+    template = Path(__file__).parents[1] / "backend" / "templates" / "subscribe.html"
+    html = template.read_text(encoding="utf-8")
+
+    assert 'href="/unsubscribe-request.html"' in html
+    assert "إدارة التفضيلات والتنبيهات" in html
 
 
 def test_subscription_persists_and_updates_smart_preferences():

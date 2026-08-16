@@ -50,7 +50,7 @@ async def request_unsubscribe(
         background_tasks.add_task(send_unsubscribe_email, user.email, user.token)
 
         return JSONResponse(
-            content={"message": "تم إرسال رابط إلغاء الاشتراك إلى بريدك الإلكتروني."}
+            content={"message": "تم إرسال رابط إدارة الاشتراك إلى بريدك الإلكتروني."}
         )
 
     except HTTPException as exc:
