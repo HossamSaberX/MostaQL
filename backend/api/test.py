@@ -18,7 +18,7 @@ from backend.services.scraper import (
     _job_exists_in_db,
     poll_category,
 )
-from backend.services.notifier import process_new_jobs
+from backend.services.notifier import flush_notifications, process_new_jobs
 
 router = APIRouter()
 
@@ -48,6 +48,12 @@ class TestJobWithRateRequest(BaseModel):
     client_profile_url: Optional[str] = None
     client_identity_verified: Optional[bool] = None
     client_payment_verified: Optional[bool] = None
+
+
+def _flush_counts() -> dict:
+    """Send what is due and report how many emails and Telegram messages were queued."""
+    flushed = flush_notifications()
+    return {key: flushed[key] for key in ("queued_emails", "queued_telegram")}
 
 
 @router.post("/simulate-job")
@@ -101,8 +107,9 @@ async def simulate_job(data: TestJobWithRateRequest, db: Session = Depends(get_d
     db.commit()
     db.refresh(job)
     
-    # Trigger notification logic
+    # Record the matches, then send what is due (the scheduler does the same after each poll)
     result = process_new_jobs([job], data.category_id)
+    result.update(_flush_counts())
     
     return {
         "status": "success",
@@ -152,6 +159,7 @@ async def test_notification(data: TestNotificationRequest, db: Session = Depends
     
     db.commit()
     result = process_new_jobs(test_jobs, data.category_id)
+    result.update(_flush_counts())
     
     return {
         "status": "success",

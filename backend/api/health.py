@@ -96,8 +96,9 @@ async def health_check(db: Session = Depends(get_db)):
             Notification.status == "sent"
         ).count()
         
+        # A failed row has no sent_at; it counts by when it was recorded.
         failed_today = db.query(Notification).filter(
-            Notification.sent_at >= today_start,
+            Notification.created_at >= today_start,
             Notification.status == "failed"
         ).count()
         

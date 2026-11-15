@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/mostaql.db"
 
     email_provider: str = "gmail"
-    email_bcc_batch_size: int = 0
     
     gmail_user: str = ""
     gmail_app_password: str = ""
@@ -51,6 +50,8 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = ""
     telegram_bot_username: str = ""
+    # When set, Telegram must send it back in X-Telegram-Bot-Api-Secret-Token (see setWebhook).
+    telegram_webhook_secret: Optional[str] = None
 
     api_port: int = 8000
 

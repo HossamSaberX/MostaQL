@@ -1,87 +1,76 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon, telegram_button, channels_field, email_delivery_field, categories_field, smart_filters_field, form_status %}
+
+{% block page_class %}page--home{% endblock %}
 
 {% block content %}
-<article class="card">
-    <header>
-        <h1>تنبيهات وظائف مستقل</h1>
-        <p class="subtitle">اشترك للحصول على إشعارات فورية بالوظائف الجديدة</p>
-    </header>
-
-    <div id="successMessage" class="alert success" role="alert" aria-live="polite">
-        تم إرسال رسالة التفعيل. يرجى التحقق من بريدك الإلكتروني.
+<section class="hero" aria-labelledby="heroTitle">
+    <div class="hero-text">
+        <h1 id="heroTitle">لا تفوّت مشروعًا جديدًا على مستقل</h1>
+        <p class="lead">تنبيه فوري على تيليجرام والبريد الإلكتروني بكل مشروع يُنشر في التصنيفات التي تختارها، مفلترًا حسب ما يهمك.</p>
+        <ol class="steps">
+            <li>اختر التصنيفات</li>
+            <li>أكّد بريدك</li>
+            <li>اربط تيليجرام</li>
+        </ol>
     </div>
 
-    <section id="telegramSection" style="display: none; margin-bottom: 24px;">
-        <a id="telegramBtn" href="#" target="_blank" rel="noopener noreferrer" class="btn-telegram">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M20.665 3.717L2.335 10.786C1.084 11.286 1.089 11.984 2.103 12.295L6.81 13.764L17.704 6.893C18.22 6.58 18.693 6.753 18.307 7.096L9.482 15.053V15.052L9.481 15.054L9.156 19.916C9.633 19.916 9.843 19.699 10.11 19.44L12.43 17.187L17.257 20.753C18.147 21.244 18.787 20.991 19.009 19.93L22.18 5.004C22.505 3.48 21.691 2.789 20.665 3.717Z" fill="white"/>
-            </svg>
-            <span id="telegramBtnText">تفعيل تنبيهات تيليجرام فوراً</span>
-        </a>
-        <p class="input-hint helper-text" style="margin-top: 12px; text-align: center;">يمكنك تفعيل التنبيهات فوراً دون انتظار البريد الإلكتروني</p>
-    </section>
+    <figure class="sample">
+        <figcaption><span class="tag">مثال</span> هكذا يصلك التنبيه</figcaption>
+        <p class="sample-title">تصميم شعار وهوية بصرية لمتجر قهوة</p>
+        <dl class="facts">
+            <div><dt>الميزانية</dt><dd dir="ltr">$100 - $250</dd></div>
+            <div><dt>معدل التوظيف</dt><dd dir="ltr">86.50%</dd></div>
+            <div><dt>عمر المشروع</dt><dd>3 دقائق</dd></div>
+        </dl>
+        <p class="sample-reason">تصنيف تتابعه: تصميم، فيديو وصوتيات</p>
+        <span class="sample-action">راجع المشروع وتقدّم الآن</span>
+    </figure>
+</section>
 
-    <div id="resetSection" style="display: none; text-align: center; margin-top: 16px;">
-        <button type="button" id="resetBtn" class="primary-btn" style="background: transparent; color: var(--brand-primary); border: 1px solid var(--border-color);">
-            العودة للصفحة الرئيسية
-        </button>
-    </div>
+<section class="panel" id="subscribe" aria-labelledby="formTitle">
+    <form id="subscribeForm" novalidate aria-labelledby="formTitle">
+        <h2 id="formTitle">ابدأ الآن، مجانًا</h2>
 
-    <div id="errorMessage" class="alert error" role="alert" aria-live="assertive"></div>
-
-    <form id="subscribeForm" novalidate>
-        <div class="form-group">
-            <label for="email">البريد الإلكتروني</label>
-            <input
-                type="email"
-                id="email"
-                name="email"
-                placeholder="name@example.com"
-                required
-                dir="ltr"
-                lang="en"
-                autocomplete="email"
-                aria-describedby="emailError"
-                aria-invalid="false"
-            >
-            <p id="emailError" class="input-hint error-text" role="alert">البريد الإلكتروني غير صالح</p>
+        <div class="field">
+            <label for="email">بريدك الإلكتروني</label>
+            <input type="email" id="email" name="email" required dir="ltr" placeholder="name@example.com"
+                   autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
+                   enterkeyhint="next" data-error="emailError">
+            <p class="field-error" id="emailError" hidden></p>
         </div>
 
-        {{ notification_options(email_checked=True, telegram_checked=True) }}
+        {{ channels_field() }}
+        {{ email_delivery_field() }}
+        {{ categories_field(max_categories | default(10)) }}
+        {{ smart_filters_field() }}
 
-        <div class="form-group">
-            <label for="categories">اختر التصنيفات</label>
-            <input
-                type="search"
-                id="categorySearch"
-                class="category-search"
-                placeholder="بحث في التصنيفات"
-                autocomplete="off"
-                aria-label="بحث في التصنيفات"
-            >
-            <div class="categories" id="categories" role="group" aria-describedby="categoryError categoryHint">
-                <div class="loading" aria-live="polite">جاري تحميل التصنيفات...</div>
-            </div>
-            <p id="categoryHint" class="input-hint helper-text">اختر التخصصات التي تهمك للحصول على التنبيهات</p>
-            <p id="categorySearchEmpty" class="input-hint helper-text category-search-empty" role="status" hidden>لا توجد تصنيفات مطابقة.</p>
-            <p id="categoryError" class="input-hint error-text" role="alert">يجب اختيار تصنيف واحد على الأقل</p>
-        </div>
-
-        <button type="submit" class="primary-btn" id="submitBtn">
-            اشترك الآن
-        </button>
+        {{ form_status() }}
+        <button type="submit" class="button button--primary button--wide">اشترك الآن</button>
+        <p class="hint">لديك اشتراك بالفعل؟ <a href="/unsubscribe-request.html">أدِر تنبيهاتك وعملاءك السابقين</a></p>
     </form>
 
-    <p style="text-align: center; margin-top: 18px;">
-        <a class="helper-text" href="/unsubscribe-request.html">لديك اشتراك بالفعل؟ إدارة التفضيلات والتنبيهات</a>
-    </p>
-</article>
+    <div class="done" id="done" hidden>
+        <span class="status-icon status-icon--success">{{ icon("mail") }}</span>
+        <div data-done="created" hidden>
+            <h2 tabindex="-1">تحقق من بريدك</h2>
+            <p>أرسلنا رسالة إلى <bdi data-email></bdi>. افتح الرابط الذي فيها لتكمل.</p>
+            <p class="hint">لم تجده؟ انظر في الرسائل غير المرغوب فيها.</p>
+        </div>
+        <div data-done="telegram" hidden>
+            <h2 tabindex="-1">خطوة أخيرة: اربط تيليجرام</h2>
+            <p>اضغط الزر، ثم «ابدأ» في البوت. ستصلك التنبيهات هناك.</p>
+            <p class="hint">أرسلنا أيضًا إلى <bdi data-email></bdi> رابطًا لتأكيد بريدك.</p>
+        </div>
+        <p class="hint" id="doneTelegramHint" hidden>لا تريد الانتظار؟ اربط تيليجرام الآن.</p>
+        <div class="actions">
+            {{ telegram_button(id="doneTelegram", hidden=True) }}
+            <button type="button" class="button button--quiet" id="changeEmail">غيّر البريد</button>
+        </div>
+    </div>
+</section>
 {% endblock %}
 
 {% block scripts %}
-<script>
-    const telegramBotUsername = "{{ telegram_bot_username }}";
-</script>
-<script src="/assets/script.js?v=4" defer></script>
+<script type="module" src="/assets/home.js?v={{ asset_version }}"></script>
 {% endblock %}
-

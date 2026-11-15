@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_panel %}
+
+{% block referrer %}no-referrer{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+{% if state == "confirm" %}
+    {% call status_panel("info", "mail", "إلغاء الاشتراك من البريد") %}
+        <p>لن تصلك تنبيهات المشاريع على بريدك بعد الآن.</p>
+        <form method="post" action="{{ action_url }}" class="actions">
+            <input type="hidden" name="List-Unsubscribe" value="One-Click">
+            <button type="submit" class="button button--danger">أوقف رسائل البريد</button>
+            <a class="button button--quiet" href="{{ manage_link }}">إدارة التنبيهات</a>
+        </form>
+    {% endcall %}
+{% elif state == "done" %}
+    {% call status_panel("success", "check", "تم الإلغاء") %}
+        <p>{{ message }}</p>
+        <a class="button button--primary" href="{{ manage_link }}">إدارة التنبيهات</a>
+    {% endcall %}
+{% else %}
+    {% call status_panel("error", "alert", "الرابط غير صالح") %}
+        <p>ربما نُسخ الرابط ناقصًا. اطلب رابطًا جديدًا يصل إلى بريدك.</p>
+        <a class="button button--primary" href="/unsubscribe-request.html">اطلب رابطًا جديدًا</a>
+    {% endcall %}
+{% endif %}
+{% endblock %}

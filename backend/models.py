@@ -2,27 +2,39 @@
 Pydantic models for API request/response validation
 """
 from pydantic import BaseModel, EmailStr, Field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
+from backend.enums import EmailDelivery
 
-class SubscribeRequest(BaseModel):
-    """Request model for user subscription"""
-    email: EmailStr = Field(..., description="User's email address")
-    category_ids: List[int] = Field(
-        ..., 
-        min_items=1, 
-        description="List of category IDs to subscribe to"
-    )
+
+class AlertSettings(BaseModel):
+    """What a person receives and how: shared by subscribing and the preferences page."""
     receive_email: bool = Field(default=True, description="Receive email notifications")
     receive_telegram: bool = Field(default=True, description="Receive Telegram notifications")
+    email_delivery: EmailDelivery = Field(EmailDelivery.INSTANT, description="How often alert emails go out")
     min_hiring_rate: Optional[float] = Field(None, ge=0, le=100, description="Minimum hiring rate filter")
     require_projects_in_progress: bool = Field(False, description="Require clients with projects under execution")
     require_ongoing_communications: bool = Field(False, description="Require clients with ongoing communications")
     min_budget_usd: Optional[float] = Field(None, ge=0, description="Minimum acceptable project budget in USD")
     require_verified_client: bool = Field(False, description="Require verified client identity or payment")
     max_project_age_minutes: Optional[int] = Field(None, ge=1, description="Maximum project age in minutes")
-    
+    keywords_include: Optional[str] = Field(None, max_length=2000, description="Title must mention one of these (one per line)")
+    keywords_exclude: Optional[str] = Field(None, max_length=2000, description="Title must mention none of these (one per line)")
+
+    def alert_settings(self) -> Dict[str, Any]:
+        return self.model_dump(include=set(AlertSettings.model_fields))
+
+
+class SubscribeRequest(AlertSettings):
+    """Request model for user subscription"""
+    email: EmailStr = Field(..., description="User's email address")
+    category_ids: List[int] = Field(
+        ..., 
+        min_length=1, 
+        description="List of category IDs to subscribe to"
+    )
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -30,29 +42,27 @@ class SubscribeRequest(BaseModel):
                 "category_ids": [1, 2],
                 "receive_email": True,
                 "receive_telegram": True,
+                "email_delivery": "instant",
                 "min_hiring_rate": 50.0,
-                "require_projects_in_progress": False,
-                "require_ongoing_communications": True,
-                "min_budget_usd": 250.0,
-                "require_verified_client": False,
-                "max_project_age_minutes": 15
+                "keywords_include": "شعار\nهوية بصرية",
             }
         }
 
 
 class SubscribeResponse(BaseModel):
-    """Response model for subscription"""
+    """Response model for subscription. telegram_link connects Telegram in one tap; only an account created by this request gets one."""
     message: str
     email: str
     status: str = "created"
-    token: Optional[str] = None
+    telegram_link: Optional[str] = None
     
     class Config:
         json_schema_extra = {
             "example": {
-                "message": "تم الاشتراك بنجاح! يرجى التحقق من بريدك الإلكتروني لتأكيد الاشتراك",
+                "message": "تحقق من بريدك: أرسلنا إليه رابطًا لتأكيد اشتراكك أو لإدارته.",
                 "email": "user@example.com",
-                "status": "created"
+                "status": "created",
+                "telegram_link": "https://t.me/example_bot?start=12_1763200000_abc",
             }
         }
 
@@ -147,17 +157,15 @@ class UnsubscribeRequest(BaseModel):
     email: EmailStr = Field(..., description="User's email address")
 
 
-class PreferencesRequest(BaseModel):
-    """Request model for updating user preferences"""
+class TokenRequest(BaseModel):
+    """A request that only needs the account token."""
     token: str = Field(..., description="User token")
-    receive_email: bool = Field(..., description="Receive email notifications")
-    receive_telegram: bool = Field(..., description="Receive Telegram notifications")
-    min_hiring_rate: Optional[float] = Field(None, ge=0, le=100, description="Minimum hiring rate filter")
-    require_projects_in_progress: bool = Field(False, description="Require clients with projects under execution")
-    require_ongoing_communications: bool = Field(False, description="Require clients with ongoing communications")
-    min_budget_usd: Optional[float] = Field(None, ge=0, description="Minimum acceptable project budget in USD")
-    require_verified_client: bool = Field(False, description="Require verified client identity or payment")
-    max_project_age_minutes: Optional[int] = Field(None, ge=1, description="Maximum project age in minutes")
+
+
+class PreferencesRequest(AlertSettings):
+    """Request model for updating user preferences. Leave category_ids out to keep them."""
+    token: str = Field(..., description="User token")
+    category_ids: Optional[List[int]] = Field(None, description="Categories to follow")
 
 
 class FollowedClientRequest(BaseModel):

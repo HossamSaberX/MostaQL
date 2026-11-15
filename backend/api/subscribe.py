@@ -11,8 +11,10 @@ from backend.models import SubscribeRequest, SubscribeResponse
 from backend.services.subscription_service import (
     SubscriptionService,
     SubscriptionError,
+    issue_telegram_link,
 )
-from backend.services.email import send_verification_email
+from backend.services.email import send_unsubscribe_email, send_verification_email
+from backend.services.messages import GENERIC_ERROR
 from backend.utils.limiter import limiter
 
 router = APIRouter()
@@ -31,38 +33,32 @@ async def subscribe(
     """
     service = SubscriptionService(db)
     try:
-        result = service.subscribe(
-            data.email, 
-            data.category_ids,
-            receive_email=data.receive_email,
-            receive_telegram=data.receive_telegram,
-            min_hiring_rate=data.min_hiring_rate,
-            require_projects_in_progress=data.require_projects_in_progress,
-            require_ongoing_communications=data.require_ongoing_communications,
-            min_budget_usd=data.min_budget_usd,
-            require_verified_client=data.require_verified_client,
-            max_project_age_minutes=data.max_project_age_minutes,
-        )
+        result = service.subscribe(data.email, data.category_ids, **data.alert_settings())
     except SubscriptionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     except Exception as exc:
         db.rollback()
         logger.error(f"Subscribe error for {data.email}: {exc}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail=GENERIC_ERROR)
 
-    if result.send_verification and result.token:
-        background_tasks.add_task(
-            send_verification_email,
-            result.user.email,
-            result.token,
-        )
+    user = result.user
+    if result.send_verification:
+        background_tasks.add_task(send_verification_email, user.email, user.verify_token)
+    if result.send_manage_link:
+        background_tasks.add_task(send_unsubscribe_email, user.email, user.token)
 
-    logger.info(f"Subscription updated for {result.user.email}")
-
-    return SubscribeResponse(
-        message=result.message, 
-        email=result.user.email,
-        status=result.status,
-        token=result.token
+    logger.info(
+        f"Signup for {user.email}: {'manage link sent' if result.send_manage_link else 'confirmation sent'}"
     )
 
+    # The Telegram link goes only to an account this request created. Any other account links
+    # Telegram from its confirmation or preferences page, which only the inbox's owner can open.
+    telegram_link = None
+    if result.created and user.receive_telegram and not user.telegram_chat_id:
+        telegram_link = issue_telegram_link(db, user)
+
+    return SubscribeResponse(
+        message=result.message,
+        email=user.email,
+        telegram_link=telegram_link,
+    )

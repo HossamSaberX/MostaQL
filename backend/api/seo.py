@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Request, Response, Depends
 from sqlalchemy.orm import Session
-from backend.database import get_db, Job
+from backend.database import get_db
 from backend.config import settings
-from datetime import datetime
 
 router = APIRouter()
 

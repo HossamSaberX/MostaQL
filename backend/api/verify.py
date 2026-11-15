@@ -2,175 +2,215 @@
 Verify and unsubscribe endpoints
 """
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request
-from fastapi.responses import RedirectResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import JSONResponse
+from sqlalchemy import distinct, func
 from sqlalchemy.orm import Session
 from loguru import logger
-import os
+from datetime import datetime, timedelta
+from typing import Any, Dict
 
-from backend.database import get_db, User
-from backend.utils.security import is_token_expired
+from backend.templating import templates
+from backend.database import get_db, Notification, User
+from backend.enums import NotificationStatus
 from backend.config import settings
-from backend.models import UnsubscribeRequest, PreferencesRequest, FollowedClientRequest
+from backend.models import UnsubscribeRequest, PreferencesRequest, FollowedClientRequest, TokenRequest
 from backend.services.email import send_unsubscribe_email
+from backend.services.messages import (
+    GENERIC_ERROR,
+    count_projects,
+    email_unsubscribe_url,
+    manage_url,
+)
+from backend.services.subscription_service import (
+    SubscriptionError,
+    SubscriptionService,
+    confirmation_expired,
+    issue_telegram_link,
+    renew_token,
+)
+from backend.utils.limiter import limiter
 from backend.services.client_tracking import (
     FollowedClientError,
     add_followed_client,
     remove_followed_client,
 )
 
-templates_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
-templates = Jinja2Templates(directory=templates_dir)
 
 router = APIRouter()
 
-def get_frontend_url(path: str) -> str:
-    """Get absolute URL for frontend pages"""
-    return f"{settings.base_url}/{path}"
+INVALID_LINK = "الرابط غير صالح. افتح آخر رسالة وصلتك منا، أو اطلب رابطًا جديدًا."
+
+
+def _user_by_token(db: Session, token: str) -> User:
+    user = db.query(User).filter(User.token == token).first()
+    if not user:
+        raise HTTPException(status_code=404, detail=INVALID_LINK)
+    return user
+
+
+def _telegram_link(db: Session, user: User):
+    """A fresh one-tap link to connect Telegram, or None when it is already connected."""
+    return None if user.telegram_chat_id else issue_telegram_link(db, user)
+
+
+def _sent_this_week(db: Session, user: User) -> int:
+    """How many different projects reached this person in the last 7 days."""
+    since = datetime.utcnow() - timedelta(days=7)
+    return (
+        db.query(func.count(distinct(Notification.job_id)))
+        .filter(
+            Notification.user_id == user.id,
+            Notification.status == NotificationStatus.SENT.value,
+            Notification.sent_at >= since,
+        )
+        .scalar()
+        or 0
+    )
+
+
+def sent_this_week_text(count: int) -> str:
+    if count <= 0:
+        return "لم نرسل لك مشاريع هذا الأسبوع بعد."
+    return f"أُرسل لك {count_projects(count)} هذا الأسبوع."
+
+
+def _preferences_payload(db: Session, user: User) -> Dict[str, Any]:
+    sent = _sent_this_week(db, user)
+    return {
+        "email": user.email,
+        "receive_email": user.receive_email,
+        "receive_telegram": user.receive_telegram,
+        "email_delivery": user.email_delivery,
+        "telegram_linked": bool(user.telegram_chat_id),
+        "telegram_link": _telegram_link(db, user),
+        "unsubscribed": user.unsubscribed,
+        "verified": user.verified,
+        "category_ids": sorted(link.category_id for link in user.categories),
+        "min_hiring_rate": user.min_hiring_rate,
+        "require_projects_in_progress": user.require_projects_in_progress,
+        "require_ongoing_communications": user.require_ongoing_communications,
+        "min_budget_usd": user.min_budget_usd,
+        "require_verified_client": user.require_verified_client,
+        "max_project_age_minutes": user.max_project_age_minutes,
+        "keywords_include": user.keywords_include or "",
+        "keywords_exclude": user.keywords_exclude or "",
+        "sent_this_week": sent,
+        "sent_this_week_text": sent_this_week_text(sent),
+        "followed_clients": [
+            {
+                "id": followed_client.id,
+                "profile_url": followed_client.profile_url,
+                "label": followed_client.label,
+            }
+            for followed_client in user.followed_clients
+        ],
+    }
+
+
+# The same words whether or not the address is registered, so the form cannot be used
+# to find out who has an account.
+UNSUBSCRIBE_REQUEST_REPLY = "إذا كان البريد مسجلاً لدينا، أرسلنا إليه رابط إدارة الاشتراك."
 
 
 @router.post("/unsubscribe-request")
+@limiter.limit(f"{settings.rate_limit_per_hour}/hour")
 async def request_unsubscribe(
+    request: Request,
     data: UnsubscribeRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
-    Request an unsubscribe link via email
+    Mail the manage link to any account, paused ones too (they can turn alerts back on there).
+    The reply never says whether the address exists.
     """
     try:
         user = db.query(User).filter(User.email == data.email).first()
-
-        if not user:
-            raise HTTPException(status_code=404, detail="البريد غير مسجل لدينا")
-
-        if user.unsubscribed:
-            raise HTTPException(status_code=400, detail="البريد غير مشترك حالياً")
-
-        background_tasks.add_task(send_unsubscribe_email, user.email, user.token)
-
-        return JSONResponse(
-            content={"message": "تم إرسال رابط إدارة الاشتراك إلى بريدك الإلكتروني."}
-        )
-
-    except HTTPException as exc:
-        logger.warning(f"Unsubscribe request rejected for {data.email}: {exc.detail}")
-        raise exc
+        if user:
+            background_tasks.add_task(send_unsubscribe_email, user.email, user.token)
     except Exception as e:
-        logger.error(f"Unsubscribe request error for {data.email}: {e}")
-        raise HTTPException(status_code=500, detail="خطأ داخلي، حاول لاحقاً")
+        logger.error(f"Unsubscribe request error: {e}")
+        raise HTTPException(status_code=500, detail=GENERIC_ERROR)
+
+    return JSONResponse(content={"message": UNSUBSCRIBE_REQUEST_REPLY})
 
 
-@router.get("/verify/{token}")
-async def verify_email(token: str, db: Session = Depends(get_db)):
+def _user_to_confirm(db: Session, code: str):
+    """The unconfirmed account this confirmation code belongs to, if any."""
+    return db.query(User).filter(User.verify_token == code).first()
+
+
+@router.get("/verify/{code}")
+async def verify_email(code: str, request: Request, db: Session = Depends(get_db)):
     """
-    Verify user email with token
-    Token expires after 24 hours
+    Confirm an email address and show the result right here. The page is rendered on the
+    server, so the account token never travels on to another address.
     """
+    context: Dict[str, Any] = {"request": request, "title": "تأكيد البريد الإلكتروني"}
     try:
-        user = db.query(User).filter(User.token == token).first()
-        
+        user = _user_to_confirm(db, code)
         if not user:
-            logger.warning(f"Verification failed: Invalid token {token[:10]}...")
-            return RedirectResponse(url=get_frontend_url("verify.html?status=invalid"))
-        
-        if user.verified:
-            logger.info(f"User already verified: {user.email}")
-            return RedirectResponse(url=get_frontend_url(f"verify.html?status=already_verified&token={user.token}"))
-        
-        issued_at = user.token_issued_at or user.created_at
-        if issued_at and is_token_expired(issued_at, settings.verification_token_expiry_hours):
-            logger.warning(f"Verification failed: Expired token for {user.email}")
-            return RedirectResponse(url=get_frontend_url("verify.html?status=expired"))
-        
-        user.verified = True
-        db.commit()
-        
-        logger.info(f"User verified successfully: {user.email}")
-        return RedirectResponse(url=get_frontend_url(f"verify.html?status=success&token={user.token}"))
-        
+            logger.warning(f"Verification failed: unknown or used code {code[:10]}...")
+            status = "invalid"
+        elif confirmation_expired(user):
+            logger.warning(f"Verification failed: Expired code for {user.email}")
+            status = "expired"
+        else:
+            # Anyone could have signed this address up and linked their own Telegram chat, which
+            # also got the account token. Now that the inbox is proven, start clean: a new token
+            # (every earlier link and Telegram code stops working) and no chat from before.
+            context["relink_telegram"] = bool(user.telegram_chat_id)
+            user.verified = True
+            user.verify_token = None
+            user.telegram_chat_id = None
+            renew_token(user)
+            db.commit()
+            logger.info(f"User verified successfully: {user.email}")
+            status = "success"
+            context["manage_link"] = manage_url(user.token)
+            context["paused"] = bool(user.unsubscribed)
+            # Only right after confirming: a link scanner reopening the email must not replace it.
+            if user.receive_telegram or context["relink_telegram"]:
+                context["telegram_link"] = _telegram_link(db, user)
     except Exception as e:
-        logger.error(f"Verify error for token {token[:10]}...: {e}")
+        logger.error(f"Verify error for code {code[:10]}...: {e}")
         db.rollback()
-        return RedirectResponse(url=get_frontend_url("verify.html?status=error"))
+        status = "error"
+
+    context["status"] = status
+    return templates.TemplateResponse(request, "verify.html", context)
 
 
 @router.get("/unsubscribe/{token}")
 async def unsubscribe_page(token: str, request: Request, db: Session = Depends(get_db)):
-    """
-    Show preferences management page instead of immediately unsubscribing
-    Token never expires (permanent link)
-    """
+    """The preferences page (the "manage alerts" link). The token never expires."""
+    context: Dict[str, Any] = {
+        "request": request,
+        "title": "إدارة التنبيهات",
+        "token": token,
+        "max_categories": settings.max_categories_per_user,
+    }
     try:
-        user = db.query(User).filter(User.token == token).first()
-        
-        if not user:
+        if not db.query(User.id).filter(User.token == token).first():
             logger.warning(f"Invalid token for preferences: {token[:10]}...")
-            return templates.TemplateResponse(
-                "preferences.html",
-                {
-                    "request": request, 
-                    "title": "إدارة التفضيلات", 
-                    "error": "رابط غير صالح",
-                    "token": token
-                }
-            )
-        
-        return templates.TemplateResponse(
-            "preferences.html",
-            {
-                "request": request,
-                "title": "إدارة التفضيلات",
-                "telegram_bot_username": settings.telegram_bot_username,
-                "token": token
-            }
-        )
-        
+            context["error"] = "invalid"
     except Exception as e:
         logger.error(f"Error loading preferences page for token {token[:10]}...: {e}")
-        return templates.TemplateResponse(
-            "preferences.html",
-            {"request": request, "title": "إدارة التفضيلات", "error": "حدث خطأ"}
-        )
+        context["error"] = "error"
+    return templates.TemplateResponse(request, "preferences.html", context)
 
 
 @router.get("/preferences/{token}")
 async def get_preferences(token: str, db: Session = Depends(get_db)):
-    """
-    Get current user preferences
-    """
+    """Everything the preferences page shows."""
     try:
-        user = db.query(User).filter(User.token == token).first()
-        
-        if not user:
-            raise HTTPException(status_code=404, detail="رابط غير صالح")
-        
-        return JSONResponse(content={
-            "receive_email": user.receive_email,
-            "receive_telegram": user.receive_telegram,
-            "unsubscribed": user.unsubscribed,
-            "verified": user.verified,
-            "min_hiring_rate": user.min_hiring_rate,
-            "require_projects_in_progress": user.require_projects_in_progress,
-            "require_ongoing_communications": user.require_ongoing_communications,
-            "min_budget_usd": user.min_budget_usd,
-            "require_verified_client": user.require_verified_client,
-            "max_project_age_minutes": user.max_project_age_minutes,
-            "followed_clients": [
-                {
-                    "id": followed_client.id,
-                    "profile_url": followed_client.profile_url,
-                    "label": followed_client.label,
-                }
-                for followed_client in user.followed_clients
-            ],
-        })
-        
+        user = _user_by_token(db, token)
+        return JSONResponse(content=_preferences_payload(db, user))
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting preferences for token {token[:10]}...: {e}")
-        raise HTTPException(status_code=500, detail="حدث خطأ أثناء تحميل التفضيلات")
+        raise HTTPException(status_code=500, detail="تعذر تحميل إعداداتك. حدّث الصفحة بعد قليل.")
 
 
 @router.post("/preferences")
@@ -178,51 +218,55 @@ async def update_preferences(
     data: PreferencesRequest,
     db: Session = Depends(get_db)
 ):
-    """
-    Update user preferences
-    """
+    """Save the preferences page: categories, channels, email timing and filters."""
+    user = _user_by_token(db, data.token)
     try:
-        user = db.query(User).filter(User.token == data.token).first()
-        
-        if not user:
-            raise HTTPException(status_code=404, detail="رابط غير صالح")
-        
-        if user.unsubscribed:
-            raise HTTPException(status_code=400, detail="الحساب غير مشترك حالياً")
-        
-        if not data.receive_email and not data.receive_telegram:
-            raise HTTPException(status_code=400, detail="يجب اختيار طريقة إشعار واحدة على الأقل")
-        
-        user.receive_email = data.receive_email
-        user.receive_telegram = data.receive_telegram
-        user.min_hiring_rate = data.min_hiring_rate
-        user.require_projects_in_progress = data.require_projects_in_progress
-        user.require_ongoing_communications = data.require_ongoing_communications
-        user.min_budget_usd = data.min_budget_usd
-        user.require_verified_client = data.require_verified_client
-        user.max_project_age_minutes = data.max_project_age_minutes
-        db.commit()
-        
-        logger.info(f"Preferences updated for {user.email}: email={data.receive_email}, telegram={data.receive_telegram}, rate={data.min_hiring_rate}")
-        
-        return JSONResponse(content={
-            "message": "تم حفظ التفضيلات بنجاح",
-            "receive_email": data.receive_email,
-            "receive_telegram": data.receive_telegram,
-            "min_hiring_rate": data.min_hiring_rate,
-            "require_projects_in_progress": data.require_projects_in_progress,
-            "require_ongoing_communications": data.require_ongoing_communications,
-            "min_budget_usd": data.min_budget_usd,
-            "require_verified_client": data.require_verified_client,
-            "max_project_age_minutes": data.max_project_age_minutes,
-        })
-        
-    except HTTPException:
-        raise
+        SubscriptionService(db).update_preferences(user, data.category_ids, **data.alert_settings())
+    except SubscriptionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     except Exception as e:
         logger.error(f"Error updating preferences: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail="حدث خطأ أثناء حفظ التفضيلات")
+        raise HTTPException(status_code=500, detail="تعذر حفظ التغييرات. حاول مرة أخرى بعد قليل.")
+
+    logger.info(f"Preferences updated for {user.email}")
+    return JSONResponse(content={"message": "حُفظت التغييرات.", **_preferences_payload(db, user)})
+
+
+@router.post("/resubscribe/{token}")
+async def resubscribe(token: str, db: Session = Depends(get_db)):
+    """Turn alerts back on from the preferences page, with at least one working channel."""
+    user = _user_by_token(db, token)
+    try:
+        user.unsubscribed = False
+        if not (user.receive_email or (user.receive_telegram and user.telegram_chat_id)):
+            user.receive_email = True
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Resubscribe error for token {token[:10]}...: {e}")
+        raise HTTPException(status_code=500, detail=GENERIC_ERROR)
+
+    logger.info(f"User turned alerts back on: {user.email}")
+    return JSONResponse(content={"message": "عادت التنبيهات للعمل.", **_preferences_payload(db, user)})
+
+
+@router.post("/preferences/telegram/unlink")
+async def unlink_telegram(data: TokenRequest, db: Session = Depends(get_db)):
+    """Disconnect the Telegram chat, for example one that was linked by mistake."""
+    user = _user_by_token(db, data.token)
+    try:
+        user.telegram_chat_id = None
+        user.telegram_link_nonce = None
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Telegram unlink error for token {data.token[:10]}...: {e}")
+        raise HTTPException(status_code=500, detail=GENERIC_ERROR)
+
+    logger.info(f"Telegram unlinked from the preferences page: {user.email}")
+    return JSONResponse(content={"message": "فصلنا تيليجرام عن حسابك.", **_preferences_payload(db, user)})
 
 
 @router.post("/preferences/clients")
@@ -232,11 +276,9 @@ async def add_previously_completed_client(
 ):
     """Watch every new project published by a client from a user's past work."""
 
-    user = db.query(User).filter(User.token == data.token).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="رابط غير صالح")
+    user = _user_by_token(db, data.token)
     if user.unsubscribed:
-        raise HTTPException(status_code=400, detail="الحساب غير مشترك حالياً")
+        raise HTTPException(status_code=400, detail="التنبيهات متوقفة. أعد تفعيلها أولًا، ثم أضف العميل.")
 
     try:
         followed_client = add_followed_client(
@@ -248,7 +290,7 @@ async def add_previously_completed_client(
         )
         return JSONResponse(
             content={
-                "message": "تمت إضافة العميل إلى قائمة المتابعة. ستصلك مشاريعه الجديدة من أي تصنيف.",
+                "message": "أضفنا العميل. ستصلك مشاريعه الجديدة من أي تصنيف.",
                 "status": "saved",
                 "client": {
                     "id": followed_client.id,
@@ -263,7 +305,7 @@ async def add_previously_completed_client(
     except Exception as exc:
         db.rollback()
         logger.error(f"Error adding followed client for {user.email}: {exc}")
-        raise HTTPException(status_code=500, detail="حدث خطأ أثناء إضافة العميل")
+        raise HTTPException(status_code=500, detail="تعذر إضافة العميل. حاول مرة أخرى بعد قليل.")
 
 
 @router.delete("/preferences/clients/{followed_client_id}")
@@ -274,46 +316,89 @@ async def remove_previously_completed_client(
 ):
     """Stop watching one previously completed client."""
 
-    user = db.query(User).filter(User.token == token).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="رابط غير صالح")
+    user = _user_by_token(db, token)
 
     try:
         remove_followed_client(db, user.id, followed_client_id)
-        return JSONResponse(content={"message": "تم حذف العميل من قائمة المتابعة"})
+        return JSONResponse(content={"message": "حذفنا العميل من قائمتك."})
     except FollowedClientError as exc:
         db.rollback()
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     except Exception as exc:
         db.rollback()
         logger.error(f"Error removing followed client {followed_client_id}: {exc}")
-        raise HTTPException(status_code=500, detail="حدث خطأ أثناء حذف العميل")
+        raise HTTPException(status_code=500, detail="تعذر حذف العميل. حاول مرة أخرى بعد قليل.")
 
 
 @router.post("/unsubscribe/{token}")
 async def unsubscribe_all(token: str, db: Session = Depends(get_db)):
-    """
-    Unsubscribe user from all notifications (master switch)
-    """
+    """Stop every alert (the master switch). The settings stay, so alerts can come back."""
+    user = _user_by_token(db, token)
     try:
-        user = db.query(User).filter(User.token == token).first()
-        
-        if not user:
-            raise HTTPException(status_code=404, detail="رابط غير صالح")
-        
-        if user.unsubscribed:
-            return JSONResponse(content={"message": "تم إلغاء الاشتراك مسبقاً"})
-        
-        user.unsubscribed = True
-        db.commit()
-        
-        logger.info(f"User unsubscribed from all: {user.email}")
-        return JSONResponse(content={"message": "تم إلغاء الاشتراك بنجاح"})
-        
-    except HTTPException:
-        raise
+        if not user.unsubscribed:
+            user.unsubscribed = True
+            db.commit()
+            logger.info(f"User unsubscribed from all: {user.email}")
     except Exception as e:
         logger.error(f"Unsubscribe error for token {token[:10]}...: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail="حدث خطأ أثناء إلغاء الاشتراك")
+        raise HTTPException(status_code=500, detail="تعذر إيقاف التنبيهات. حاول مرة أخرى بعد قليل.")
+    return JSONResponse(content={"message": "أوقفنا كل التنبيهات. يمكنك إعادتها من هذه الصفحة متى شئت.", **_preferences_payload(db, user)})
 
+
+def _email_unsubscribe_page(request: Request, state: str, token: str = "", message: str = ""):
+    """The page behind the email footer link: confirm, done or invalid."""
+    return templates.TemplateResponse(
+        request,
+        "email_unsubscribe.html",
+        {
+            "request": request,
+            "title": "إلغاء الاشتراك من البريد",
+            "state": state,
+            "message": message,
+            "action_url": email_unsubscribe_url(token) if token else "",
+            "manage_link": manage_url(token) if token else "",
+        },
+    )
+
+
+@router.get("/unsubscribe/{token}/email")
+async def email_unsubscribe_confirm(token: str, request: Request, db: Session = Depends(get_db)):
+    """
+    The footer link of alert emails. Opening it changes nothing (link scanners open links);
+    the change happens when the button posts to the same address.
+    """
+    user = db.query(User).filter(User.token == token).first()
+    if not user:
+        return _email_unsubscribe_page(request, "invalid")
+    return _email_unsubscribe_page(request, "confirm", token)
+
+
+@router.post("/unsubscribe/{token}/email")
+async def unsubscribe_email_only(token: str, request: Request, db: Session = Depends(get_db)):
+    """
+    Stop alerts by email. This is the one-click address of the List-Unsubscribe header
+    (RFC 8058), so it needs no confirmation and can be repeated safely. When nothing else
+    is left to send to (Telegram not linked or off), the whole subscription is stopped.
+    """
+    user = _user_by_token(db, token)
+
+    try:
+        user.receive_email = False
+        if not (user.telegram_chat_id and user.receive_telegram):
+            user.unsubscribed = True
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Email unsubscribe error for token {token[:10]}...: {e}")
+        raise HTTPException(status_code=500, detail=GENERIC_ERROR)
+
+    logger.info(f"User stopped email alerts: {user.email} (unsubscribed={user.unsubscribed})")
+    message = (
+        "لن تصلك منا رسائل بعد الآن."
+        if user.unsubscribed
+        else "أوقفنا رسائل البريد. تنبيهات تيليجرام مستمرة."
+    )
+    if "text/html" in request.headers.get("accept", ""):
+        return _email_unsubscribe_page(request, "done", token, message)
+    return JSONResponse(content={"message": message, "unsubscribed": user.unsubscribed})
