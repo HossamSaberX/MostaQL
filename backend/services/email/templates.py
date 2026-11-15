@@ -149,10 +149,14 @@ def render_verification_email(verify_url: str, expiry_hours: Optional[int] = Non
 
 
 def render_unsubscribe_email(token: str) -> Tuple[str, str, str]:
+    """The manage link. Sent when someone asks for it, and when a subscribed address signs up again."""
     title = "إدارة اشتراكك"
     body = (
         _Parts()
-        .paragraph(f"طلبت إدارة اشتراكك في {SERVICE_NAME}. من الزر أدناه تعدّل تنبيهاتك أو تلغي الاشتراك.")
+        .paragraph(
+            f"وصلنا طلب لهذا البريد، وهو مشترك من قبل في {SERVICE_NAME}. "
+            "من الزر أدناه تعدّل تنبيهاتك أو توقفها أو تعيد تشغيلها."
+        )
         .button("إدارة الاشتراك أو إلغاؤه", manage_url(token))
     )
     return _finish(
@@ -204,26 +208,19 @@ def _shorten(title: str, limit: int = SUBJECT_TITLE_LENGTH) -> str:
     return title if len(title) <= limit else title[: limit - 1].rstrip() + "…"
 
 
-def render_alert_email(
-    jobs: List[Dict[str, Any]],
-    *,
-    token: Optional[str],
-    more_count: int = 0,
-    more_url: Optional[str] = None,
-) -> Tuple[str, str, str]:
+def render_alert_email(jobs: List[Dict[str, Any]], *, token: Optional[str]) -> Tuple[str, str, str]:
     """
     One alert email for one person.
 
-    Projects from past clients come first and at most 20 cards are drawn; the rest, plus
-    `more_count` projects the caller left out, become one "و{N} أخرى" link. The subject count
-    includes `more_count`.
+    Projects from past clients come first and at most 20 cards are drawn; the rest become one
+    "and N more" link to Mostaql's project list. The subject counts every project.
     """
     if not jobs:
         raise ValueError("render_alert_email needs at least one project")
 
     ordered = order_jobs(jobs)
     shown = ordered[:MAX_PROJECTS_IN_EMAIL]
-    total = len(ordered) + more_count
+    total = len(ordered)
     hidden = total - len(shown)
 
     first = shown[0]
@@ -237,7 +234,7 @@ def render_alert_email(
     for job in shown:
         body.add(*_project_card(job))
     if hidden > 0:
-        body.link(more_projects(hidden), more_url or projects_url())
+        body.link(more_projects(hidden), projects_url())
 
     preheader = " · ".join(f"{label}: {value}" for label, value in job_facts(first)[:2]) or str(first["title"])
     return _finish(subject, count_projects(total), preheader, body, _subscriber_footer(token))

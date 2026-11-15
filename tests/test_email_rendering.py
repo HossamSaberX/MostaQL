@@ -71,16 +71,14 @@ def test_html_and_text_carry_the_same_facts_and_link():
 
 def test_only_twenty_projects_are_drawn_and_the_rest_become_one_link():
     jobs = [job(n) for n in range(1, 26)]
-    subject, html, text = render_alert_email(
-        jobs, token="tok", more_count=4, more_url="https://alerts.test/more"
-    )
+    subject, html, text = render_alert_email(jobs, token="tok")
 
-    assert subject.startswith("29 مشروعًا جديدًا")
+    assert subject.startswith("25 مشروعًا جديدًا")
     assert html.count("راجع المشروع وتقدّم الآن") == 20
     assert "مشروع 20<" in html and "مشروع 21<" not in html
-    assert 'href="https://alerts.test/more"' in html
-    assert "و9 أخرى" in html
-    assert "و9 أخرى: https://alerts.test/more" in text
+    assert 'href="https://mostaql.com/projects"' in html
+    assert "و5 مشاريع أخرى" in html
+    assert "و5 مشاريع أخرى: https://mostaql.com/projects" in text
 
 
 def test_no_more_link_when_everything_fits():
@@ -278,6 +276,19 @@ def test_verification_email_is_sent_without_list_unsubscribe(monkeypatch):
     assert parsed.get_body(("plain",)) is not None
 
 
+def test_a_failed_goodbye_after_a_sent_email_still_counts_as_sent(monkeypatch):
+    # Reporting failure here would make the alternate provider send the same email again.
+    class QuitFails(FakeSMTP):
+        def quit(self):
+            raise base.smtplib.SMTPServerDisconnected("gone")
+
+    FakeSMTP.sent = []
+    monkeypatch.setattr(base.smtplib, "SMTP", QuitFails)
+
+    assert FakeProvider().send_job_notifications("user@example.com", [job(1)], "tok") is True
+    assert len(FakeSMTP.sent) == 1
+
+
 def test_an_email_task_goes_through_the_queue_to_one_recipient(monkeypatch):
     FakeSMTP.sent = []
     monkeypatch.setattr(base.smtplib, "SMTP", FakeSMTP)
@@ -288,8 +299,6 @@ def test_an_email_task_goes_through_the_queue_to_one_recipient(monkeypatch):
         email="user@example.com",
         jobs=[job(1), job(2)],
         unsubscribe_token="tok",
-        more_count=3,
-        more_url="https://alerts.test/more",
     )
 
     assert EmailTaskQueue()._process_task(task) is True
@@ -297,7 +306,7 @@ def test_an_email_task_goes_through_the_queue_to_one_recipient(monkeypatch):
     (sender, recipients, text), = FakeSMTP.sent
     assert recipients == ["user@example.com"]
     parsed = email.message_from_string(text, policy=policy.default)
-    assert parsed["Subject"] == "5 مشاريع جديدة: مشروع 1"
+    assert parsed["Subject"] == "مشروعان جديدان: مشروع 1"
     assert parsed["List-Unsubscribe"] == "<https://alerts.test/api/unsubscribe/tok/email>"
     html = parsed.get_body(("html",)).get_content()
-    assert "و3 أخرى" in html and "https://alerts.test/more" in html
+    assert "مشروع 2<" in html

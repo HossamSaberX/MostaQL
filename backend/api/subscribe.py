@@ -12,7 +12,7 @@ from backend.services.subscription_service import (
     SubscriptionService,
     SubscriptionError,
 )
-from backend.services.email import send_verification_email
+from backend.services.email import send_unsubscribe_email, send_verification_email
 from backend.services.messages import GENERIC_ERROR, telegram_link_url
 from backend.utils.limiter import limiter
 
@@ -43,19 +43,22 @@ async def subscribe(
     user = result.user
     if result.send_verification and result.token:
         background_tasks.add_task(send_verification_email, user.email, result.token)
+    if result.send_manage_link:
+        background_tasks.add_task(send_unsubscribe_email, user.email, user.token)
 
-    logger.info(f"Subscription {result.status} for {user.email}")
+    logger.info(
+        f"Signup for {user.email}: {'manage link sent' if result.send_manage_link else 'confirmation sent'}"
+    )
 
-    # Anyone can type any address here, so the Telegram link goes only to a fresh
-    # (unconfirmed) signup with no chat linked yet. An existing account links Telegram
-    # from its own preferences page, which only the owner of the email can open.
+    # The Telegram link goes only to an account this signup just created or re-confirmed (not
+    # confirmed, no chat yet). A confirmed account links Telegram from its own preferences page,
+    # which only the owner of the email can open.
     telegram_link = None
-    if result.status == "created" and user.receive_telegram and not user.telegram_chat_id:
-        telegram_link = telegram_link_url(user.id)
+    if result.send_verification and user.receive_telegram and not user.telegram_chat_id:
+        telegram_link = telegram_link_url(user)
 
     return SubscribeResponse(
         message=result.message,
         email=user.email,
-        status=result.status,
         telegram_link=telegram_link,
     )

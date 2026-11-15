@@ -25,6 +25,7 @@ BOT_COMMANDS = (
 )
 
 # One, two, 3-10, 11+ (the form after the number). Used for every count.
+_MORE_PROJECTS = ("مشروع آخر", "مشروعان آخران", "مشاريع أخرى", "مشروعًا آخر")
 _PROJECTS = ("مشروع جديد واحد", "مشروعان جديدان", "مشاريع جديدة", "مشروعًا جديدًا")
 _MINUTES = ("دقيقة واحدة", "دقيقتان", "دقائق", "دقيقة")
 _HOURS = ("ساعة واحدة", "ساعتان", "ساعات", "ساعة")
@@ -41,8 +42,8 @@ def _count(n: int, forms: Tuple[str, str, str, str]) -> str:
 
 
 def more_projects(n: int) -> str:
-    """The "and N more" line; number first, so it needs no Arabic counting form."""
-    return f"و{n} أخرى"
+    """The "and N more" line: ومشروع آخر, ومشروعان آخران, و5 مشاريع أخرى, و12 مشروعًا آخر."""
+    return f"و{_count(n, _MORE_PROJECTS)}"
 
 
 def count_projects(n: int) -> str:
@@ -130,8 +131,12 @@ def manage_button(token: str) -> Tuple[str, str]:
     return (f"⚙️ {MANAGE_ALERTS}", manage_url(token))
 
 
-def telegram_link_url(user_id: int) -> Optional[str]:
-    """Deep link that connects Telegram to this account; None when no bot is configured."""
+def telegram_link_url(user: Any) -> Optional[str]:
+    """
+    Deep link that connects Telegram to this account; None when no bot is configured.
+    It stops working once any chat is linked to the account.
+    """
     if not settings.telegram_bot_username:
         return None
-    return f"https://t.me/{settings.telegram_bot_username}?start={make_telegram_link_code(user_id)}"
+    code = make_telegram_link_code(user.id, user.telegram_chat_id)
+    return f"https://t.me/{settings.telegram_bot_username}?start={code}"

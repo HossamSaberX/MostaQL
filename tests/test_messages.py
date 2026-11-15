@@ -5,6 +5,7 @@ from backend.services.messages import (
     job_reason,
     manage_button,
     manage_url,
+    more_projects,
     order_jobs,
     valid_for_hours,
 )
@@ -18,6 +19,15 @@ def test_count_projects_has_correct_arabic_agreement():
     assert count_projects(11) == "11 مشروعًا جديدًا"
     assert count_projects(20) == "20 مشروعًا جديدًا"
     assert count_projects(0) == "لا مشاريع جديدة"
+
+
+def test_more_projects_has_correct_arabic_agreement():
+    assert more_projects(1) == "ومشروع آخر"
+    assert more_projects(2) == "ومشروعان آخران"
+    assert more_projects(3) == "و3 مشاريع أخرى"
+    assert more_projects(10) == "و10 مشاريع أخرى"
+    assert more_projects(11) == "و11 مشروعًا آخر"
+    assert more_projects(150) == "و150 مشروعًا آخر"
 
 
 def test_validity_sentence_uses_the_given_hours():

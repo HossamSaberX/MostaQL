@@ -162,8 +162,6 @@ class EmailTask(BaseTask):
     email: str
     jobs: List[Dict[str, Any]]
     unsubscribe_token: Optional[str] = None
-    more_count: int = 0
-    more_url: Optional[str] = None
 
 
 T = TypeVar("T", bound=BaseTask)
@@ -267,8 +265,6 @@ class EmailTaskQueue(BaseTaskQueue[EmailTask]):
             email=task.email,
             jobs=task.jobs,
             unsubscribe_token=task.unsubscribe_token,
-            more_count=task.more_count,
-            more_url=task.more_url,
         )
 
 

@@ -75,8 +75,6 @@ class EmailService(ABC):
         email: str,
         jobs: List[Dict[str, Any]],
         unsubscribe_token: Optional[str] = None,
-        more_count: int = 0,
-        more_url: Optional[str] = None,
     ) -> bool:
         """
         Send one person one alert email.
@@ -85,8 +83,6 @@ class EmailService(ABC):
             email: Recipient email address
             jobs: Project payloads (see notifier._build_job_payload)
             unsubscribe_token: The recipient's token, for the manage and unsubscribe links
-            more_count: Projects the caller left out, counted as "and N more"
-            more_url: Where "and N more" leads
             
         Returns:
             True if email was sent successfully, False otherwise
@@ -175,7 +171,10 @@ class SMTPEmailService(EmailService):
                 logger.info(f"✓ Email sent via {self._get_provider_name()} to {to_email}")
                 return True
             finally:
-                server.quit()
+                try:
+                    server.quit()
+                except Exception as e:  # the mail is already accepted; a failed goodbye must not resend it
+                    logger.warning(f"{self._get_provider_name()} did not close cleanly: {e}")
 
         except smtplib.SMTPAuthenticationError as e:
             logger.error(f"✗ {self._get_provider_name()} authentication failed: {e}")
@@ -224,16 +223,12 @@ class SMTPEmailService(EmailService):
         email: str,
         jobs: List[Dict[str, Any]],
         unsubscribe_token: Optional[str] = None,
-        more_count: int = 0,
-        more_url: Optional[str] = None,
     ) -> bool:
         """Send one alert email (shared implementation)"""
         try:
             if not jobs:
                 return False
-            rendered = render_alert_email(
-                jobs, token=unsubscribe_token, more_count=more_count, more_url=more_url
-            )
+            rendered = render_alert_email(jobs, token=unsubscribe_token)
             return self._send_rendered(email, rendered, unsubscribe_token)
         except Exception as e:
             logger.error(f"Failed to send job notification to {email}: {e}")

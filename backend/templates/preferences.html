@@ -103,5 +103,5 @@
 {% endblock %}
 
 {% block scripts %}
-{% if not error %}<script type="module" src="/assets/preferences.js?v=5"></script>{% endif %}
+{% if not error %}<script type="module" src="/assets/preferences.js?v={{ asset_version }}"></script>{% endif %}
 {% endblock %}

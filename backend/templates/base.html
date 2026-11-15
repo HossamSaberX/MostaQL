@@ -28,7 +28,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap">
-    <link rel="stylesheet" href="/assets/styles.css?v=5">
+    <link rel="stylesheet" href="/assets/styles.css?v={{ asset_version }}">
+    {# Page scripts import the shared module as "app"; the version lives only here. #}
+    <script type="importmap">{"imports": {"app": "/assets/app.js?v={{ asset_version }}"}}</script>
 </head>
 <body>
     <a class="skip-link" href="#main">انتقل إلى المحتوى</a>

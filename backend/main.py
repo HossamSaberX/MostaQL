@@ -14,8 +14,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from fastapi.templating import Jinja2Templates
 
+from backend.templating import templates
 from backend.database import init_db
 from backend.utils.logger import app_logger
 from backend.scheduler import start_scheduler, shutdown_scheduler
@@ -131,8 +131,6 @@ if os.path.exists(static_dir):
     app.mount("/assets", StaticFiles(directory=static_dir), name="assets")
     app_logger.info(f"✓ Serving assets from: {static_dir}")
 
-templates_dir = os.path.join(os.path.dirname(__file__), "templates")
-templates = Jinja2Templates(directory=templates_dir)
 
 
 @app.get("/", response_class=HTMLResponse)

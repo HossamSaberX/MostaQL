@@ -6,6 +6,7 @@ from html import escape
 from typing import Optional
 
 from fastapi import APIRouter, Request, Depends, Header, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from loguru import logger
@@ -14,7 +15,7 @@ from backend.config import settings
 from backend.database import get_db, User
 from backend.services.messages import BOT_COMMANDS, SERVICE_NAME, UNAUTHORIZED, home_url, manage_button
 from backend.services.notification_queue import send_telegram_message
-from backend.utils.security import read_telegram_link_code
+from backend.utils.security import telegram_link_code_user_id, verify_telegram_link_code
 
 router = APIRouter()
 
@@ -78,8 +79,27 @@ async def telegram_webhook(
     
     if "message" not in data:
         return {"status": "ok"}
-    
-    message = data["message"]
+    # Replies are blocking HTTP calls (they may wait out a rate limit), so they run off the event loop.
+    return await run_in_threadpool(_handle_message, data["message"], db)
+
+
+def _linkable_user(db: Session, code: str, chat_id: str) -> Optional[User]:
+    """
+    The account a /start code may link, or None for a wrong, expired or already-used code.
+    Tapping your own link again from the chat it already linked still works.
+    """
+    user_id = telegram_link_code_user_id(code)
+    user = db.get(User, user_id) if user_id is not None else None
+    if not user:
+        return None
+    if verify_telegram_link_code(code, user.id, user.telegram_chat_id):
+        return user
+    if user.telegram_chat_id == chat_id and verify_telegram_link_code(code, user.id, None):
+        return user
+    return None
+
+
+def _handle_message(message: dict, db: Session) -> dict:
     chat_id = str(message.get("chat", {}).get("id", ""))
     text = message.get("text") or ""
     
@@ -109,8 +129,7 @@ async def telegram_webhook(
 
     if text.startswith("/start "):
         # Only the signed link code works here; the account token manages settings and must not.
-        user_id = read_telegram_link_code(text.split(" ", 1)[1].strip())
-        user = db.get(User, user_id) if user_id is not None else None
+        user = _linkable_user(db, text.split(" ", 1)[1].strip(), chat_id)
         
         if user:
             try:

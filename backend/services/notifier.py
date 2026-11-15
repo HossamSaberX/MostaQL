@@ -241,7 +241,7 @@ def render_telegram_alert(
 
     Projects from past clients come first and a project is never split between messages.
     A message holds at most `per_message` projects and stays under 4096 characters. After
-    `max_messages` messages the rest becomes one "و{N} أخرى" link at the end of the last one.
+    `max_messages` messages the rest becomes one "and N more" link at the end of the last one.
     """
     ordered = order_jobs(jobs)
     if not ordered:
@@ -282,15 +282,6 @@ def render_telegram_alert(
 # ---- recording matches ------------------------------------------------------------------
 
 
-def _recipient_channels(user: User) -> List[NotificationChannel]:
-    channels = []
-    if user.receive_email and user.verified:
-        channels.append(NotificationChannel.EMAIL)
-    if user.receive_telegram and user.telegram_chat_id:
-        channels.append(NotificationChannel.TELEGRAM)
-    return channels
-
-
 def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
     """
     Record who should hear about these new projects: one `pending` row per user, project and
@@ -325,7 +316,7 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
         recipients: Dict[NotificationChannel, Set[int]] = {channel: set() for channel in NotificationChannel}
         rows = 0
         for user in users:
-            channels = _recipient_channels(user)
+            channels = [channel for channel in NotificationChannel if _can_receive(user, channel.value)]
             if not channels:
                 continue
             for job in _jobs_for_user(user, new_jobs, category_id):
@@ -411,6 +402,7 @@ def _delivery_window(user: User, channel: str) -> timedelta:
 
 
 def _can_receive(user: User, channel: str) -> bool:
+    """Whether this person can get alerts on this channel right now."""
     if user.unsubscribed:
         return False
     if channel == NotificationChannel.EMAIL.value:
@@ -425,21 +417,24 @@ def _todays_digest_time(now: datetime) -> datetime:
     return nine.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def _email_is_due(user: User, rows: List[Notification], *, held: bool, now: datetime) -> bool:
+def _email_rows_due(user: User, rows: List[Notification], *, held: bool, now: datetime) -> List[Notification]:
     """
-    Past-client projects always go at the next cycle. Otherwise "within minutes" waits only
-    while an email went out in the last 10 minutes (or is still being sent), "hourly" waits
-    for the oldest project to be an hour old, and "daily" sends once after 09:00 Cairo time.
+    The rows to email now (possibly none). "Within minutes" waits only while an email went
+    out in the last 10 minutes (or is still being sent), "hourly" waits for the oldest project
+    to be an hour old, and "daily" sends once after 09:00 Cairo time. Past-client projects
+    never wait: with "within minutes" they take the whole batch along; with a digest they go
+    alone and the rest keep waiting for the digest.
     """
-    if any(_followed_client_for_job(user, row.job) for row in rows):
-        return True
+    past_client = [row for row in rows if _followed_client_for_job(user, row.job)]
     oldest = min(_created_at(row, now) for row in rows)
     if user.email_delivery == EmailDelivery.HOURLY.value:
-        return now - oldest >= DIGEST_WINDOWS[EmailDelivery.HOURLY.value]
-    if user.email_delivery == EmailDelivery.DAILY.value:
+        due = now - oldest >= DIGEST_WINDOWS[EmailDelivery.HOURLY.value]
+    elif user.email_delivery == EmailDelivery.DAILY.value:
         digest_time = _todays_digest_time(now)
-        return now >= digest_time and oldest < digest_time
-    return not held
+        due = now >= digest_time and oldest < digest_time
+    else:
+        return rows if past_client or not held else []
+    return rows if due else past_client
 
 
 def _held_email_users(db, now: datetime) -> Set[int]:
@@ -524,12 +519,9 @@ def _flush_group(
     stale_ids = {row.id for row in stale}
     fresh = [row for row in rows if row.id not in stale_ids]
 
-    task = None
-    if fresh and (
-        channel != NotificationChannel.EMAIL.value
-        or _email_is_due(user, fresh, held=user.id in held_email_users, now=now)
-    ):
-        task = _build_task(user, channel, fresh, now)
+    if fresh and channel == NotificationChannel.EMAIL.value:
+        fresh = _email_rows_due(user, fresh, held=user.id in held_email_users, now=now)
+    task = _build_task(user, channel, fresh, now) if fresh else None
 
     expired = _set_status(
         db, [row.id for row in stale], NotificationStatus.EXPIRED, only_if=NotificationStatus.PENDING
@@ -553,9 +545,10 @@ def flush_notifications(now: Optional[datetime] = None) -> Dict[str, int]:
 
     Reads only `pending` rows of the email and Telegram channels. Per person and channel it
     sends ONE combined message: Telegram every cycle, email according to the person's
-    delivery choice. Sent rows are marked `queued` (committed before the task is queued, so
-    a row can never be sent twice); the send worker then marks them sent or failed. Rows
-    too old for their window, or of people who can no longer receive them, are `expired`.
+    delivery choice. Rows are marked `queued` and committed before the message is queued, so
+    one flush sends a row at most once; the send worker then marks them sent or failed. If
+    the app stops between a send and that mark, the restart sends that one message again.
+    Rows too old for their window, or of people who can no longer receive them, are `expired`.
     """
     now = now or datetime.utcnow()
     result = {"queued_emails": 0, "queued_telegram": 0, "notifications": 0, "expired": 0}

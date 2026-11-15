@@ -11,7 +11,7 @@ from backend.services.subscription_service import (
     SubscriptionError,
     clean_word_list,
 )
-from backend.utils.security import read_telegram_link_code
+from backend.utils.security import telegram_link_code_user_id, verify_telegram_link_code
 
 
 @pytest.fixture(autouse=True)
@@ -20,6 +20,7 @@ def bot_and_no_mail(monkeypatch):
     monkeypatch.setattr(settings, "max_categories_per_user", 3)
     sent = []
     monkeypatch.setattr(subscribe, "send_verification_email", lambda email, token: sent.append(email))
+    monkeypatch.setattr(subscribe, "send_unsubscribe_email", lambda email, token: sent.append(("manage", email)))
     return sent
 
 
@@ -45,7 +46,10 @@ def save(client, **changes):
 
 
 def link_code(url):
-    return read_telegram_link_code(url.split("start=", 1)[1])
+    """The account a deep link may connect, or None when its code does not verify."""
+    code = url.split("start=", 1)[1]
+    user_id = telegram_link_code_user_id(code)
+    return user_id if verify_telegram_link_code(code, user_id, None) else None
 
 
 # ---- preferences: reading ------------------------------------------------------------------
@@ -258,14 +262,47 @@ def test_no_telegram_link_when_telegram_is_not_chosen(client, world):
     assert data["telegram_link"] is None
 
 
-def test_an_existing_account_gets_no_telegram_link(client, world):
-    # Anyone can type someone else's address here; linking Telegram must need the inbox.
+def test_a_confirmed_account_is_not_changed_and_gets_a_manage_link_by_email(client, world, bot_and_no_mail):
+    # Anyone can type someone else's address here: nothing changes without the inbox, and
+    # the reply reads like a new signup's, so the form cannot tell who has an account.
+    world.get(User, 1).unsubscribed = True
+    world.commit()
+    payload = {"category_ids": [2], "receive_telegram": False, "min_budget_usd": 999}
+    known = client.post("/api/subscribe", json={"email": "me@example.com", **payload})
+    fresh = client.post("/api/subscribe", json={"email": "new@example.com", **payload})
+
+    assert known.status_code == fresh.status_code == 200
+    data = known.json()
+    assert data == {**fresh.json(), "email": "me@example.com"}
+    assert data["telegram_link"] is None
+    assert "tok" not in known.text
+    assert bot_and_no_mail == [("manage", "me@example.com"), "new@example.com"]
+    world.expire_all()
+    user = world.get(User, 1)
+    assert [c.category_id for c in user.categories] == [1]
+    assert user.unsubscribed is True
+    assert user.receive_telegram is True
+    assert user.min_budget_usd is None
+
+
+def test_a_confirmed_account_without_telegram_gets_no_link(client, world):
     response = client.post("/api/subscribe", json={"email": "me@example.com", "category_ids": [2]})
 
-    data = response.json()
-    assert data["status"] == "updated"
-    assert data["telegram_link"] is None
-    assert "tok" not in response.text
+    assert response.json()["telegram_link"] is None
+
+
+def test_an_unconfirmed_account_gets_a_new_confirmation_link(client, world, bot_and_no_mail):
+    client.post("/api/subscribe", json={"email": "new@example.com", "category_ids": [2]})
+    first_token = world.query(User).filter_by(email="new@example.com").one().token
+
+    data = client.post("/api/subscribe", json={"email": "new@example.com", "category_ids": [3]}).json()
+
+    world.expire_all()
+    user = world.query(User).filter_by(email="new@example.com").one()
+    assert user.token != first_token
+    assert [c.category_id for c in user.categories] == [3]
+    assert link_code(data["telegram_link"]) == user.id
+    assert bot_and_no_mail == ["new@example.com", "new@example.com"]
 
 
 def test_subscribe_errors_are_arabic(client, world):

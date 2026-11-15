@@ -14,6 +14,7 @@ from backend.services.notification_queue import (
     register_bot_commands,
     send_telegram_message,
 )
+from backend.services.messages import more_projects
 from backend.services.notifier import render_telegram_alert
 from backend.utils.security import make_telegram_link_code
 
@@ -75,7 +76,7 @@ def test_a_message_holds_ten_projects_and_three_messages_make_an_alert():
     for message, numbers in zip(messages, (range(1, 11), range(11, 21), range(21, 31))):
         assert all(f'project/{n}"' in message for n in numbers)
     assert 'project/31"' not in "".join(messages)
-    assert messages[2].endswith('<a href="https://mostaql.com/projects">و5 أخرى</a>')
+    assert messages[2].endswith('<a href="https://mostaql.com/projects">و5 مشاريع أخرى</a>')
     assert "أخرى" not in messages[0] + messages[1]
 
 
@@ -88,7 +89,7 @@ def test_the_more_line_always_fits_and_counts_every_project_left_out():
     assert len(messages) <= 3
     assert all(len(message) <= 4096 for message in messages)
     shown = sum(message.count("https://mostaql.com/project/") for message in messages)
-    assert messages[-1].endswith(f"و{40 - shown} أخرى</a>")
+    assert messages[-1].endswith(f"{more_projects(40 - shown)}</a>")
 
 
 def test_an_alert_that_fits_has_no_more_line():
@@ -399,6 +400,30 @@ def test_an_expired_or_forged_link_code_changes_nothing(client, bot, db_session)
     assert db_session.get(User, 1).telegram_chat_id is None
     assert all("الرمز غير صحيح" in text for _chat, text, _buttons in bot)
     assert len(bot) == 2
+
+
+def test_a_made_up_huge_id_gets_the_wrong_code_reply(client, bot):
+    response = client.post("/api/webhook/telegram", json=update("/start " + "9" * 30 + "_1_x"))
+
+    assert response.status_code == 200
+    assert "الرمز غير صحيح" in bot[0][1]
+
+
+def test_a_link_code_links_one_chat_only(client, bot, db_session):
+    db_session.add(User(id=1, email="me@example.com", token="tok"))
+    db_session.commit()
+    code = make_telegram_link_code(1)
+
+    client.post("/api/webhook/telegram", json=update(f"/start {code}", chat_id=42))
+    client.post("/api/webhook/telegram", json=update(f"/start {code}", chat_id=42))  # tapped again: fine
+    client.post("/api/webhook/telegram", json=update(f"/start {code}", chat_id=99))  # someone else: refused
+
+    db_session.expire_all()
+    assert db_session.get(User, 1).telegram_chat_id == "42"
+    assert ["تم الربط" in text for _chat, text, _buttons in bot] == [True, True, False]
+    assert "الرمز غير صحيح" in bot[2][1]
+    assert "me@example.com" not in bot[2][1]
+    assert bot[2][2] is None  # no manage button for a stranger
 
 
 def test_a_chat_linked_to_another_account_is_not_stolen(client, bot, db_session):

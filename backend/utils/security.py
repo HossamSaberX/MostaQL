@@ -7,7 +7,7 @@ import hashlib
 import hmac
 import secrets
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Tuple
 
 from backend.config import settings
 
@@ -35,36 +35,66 @@ def _epoch(moment: datetime) -> int:
     return calendar.timegm(moment.utctimetuple())
 
 
-def _link_signature(payload: str) -> str:
+def _link_signature(user_id: str, expires: str, chat_id: Optional[str]) -> str:
+    # The chat currently linked ("none" when there is none) is signed too, so linking a chat
+    # makes every older code stop working: a code is good for one link, without storing it.
+    message = f"{user_id}_{expires}_{chat_id or 'none'}"
     digest = hmac.new(
-        settings.secret_key.encode(), _TELEGRAM_LINK_PURPOSE + payload.encode(), hashlib.sha256
+        settings.secret_key.encode(), _TELEGRAM_LINK_PURPOSE + message.encode(), hashlib.sha256
     ).digest()
     return base64.urlsafe_b64encode(digest[:16]).rstrip(b"=").decode()
 
 
-def make_telegram_link_code(user_id: int, now: Optional[datetime] = None) -> str:
+def make_telegram_link_code(
+    user_id: int, chat_id: Optional[str] = None, now: Optional[datetime] = None
+) -> str:
     """
     A signed code for the Telegram deep link: "<user id>_<expiry>_<signature>".
 
-    It proves only "this person may link a chat to this account" for a day. Unlike the
-    account token it cannot read or change preferences, so a shared link is harmless.
-    Characters are [0-9A-Za-z_-], well under Telegram's 64-character limit.
+    It proves only "this person may link a chat to this account" for a day, and only until a
+    chat is linked (`chat_id` is the account's linked chat now, if any). Unlike the account
+    token it cannot read or change preferences. Characters are [0-9A-Za-z_-], well under
+    Telegram's 64-character limit.
     """
-    expires = _epoch(now or datetime.utcnow()) + TELEGRAM_LINK_CODE_HOURS * 3600
-    payload = f"{int(user_id)}_{expires}"
-    return f"{payload}_{_link_signature(payload)}"
+    expires = str(_epoch(now or datetime.utcnow()) + TELEGRAM_LINK_CODE_HOURS * 3600)
+    return f"{int(user_id)}_{expires}_{_link_signature(str(int(user_id)), expires, chat_id)}"
 
 
-def read_telegram_link_code(code: str, now: Optional[datetime] = None) -> Optional[int]:
-    """The user id inside a valid, unexpired link code; None for anything else (never raises)."""
+def _split_link_code(code: str) -> Optional[Tuple[str, str, str]]:
     try:
         user_id, expires, signature = str(code).strip().split("_", 2)
-        if not (user_id.isascii() and user_id.isdigit() and expires.isascii() and expires.isdigit()):
-            return None
-        if not hmac.compare_digest(signature.encode(), _link_signature(f"{user_id}_{expires}").encode()):
-            return None
-        if int(expires) < _epoch(now or datetime.utcnow()):
-            return None
-        return int(user_id)
-    except (ValueError, TypeError, UnicodeError):
+    except ValueError:
         return None
+    # Short ASCII digits only, so a made-up id never reaches the database as a huge number.
+    for part, max_digits in ((user_id, 18), (expires, 12)):
+        if not (part.isascii() and part.isdigit() and len(part) <= max_digits):
+            return None
+    return user_id, expires, signature
+
+
+def telegram_link_code_user_id(code: str) -> Optional[int]:
+    """
+    The account a link code names, NOT yet checked: load that account and pass it to
+    `verify_telegram_link_code` before trusting it.
+    """
+    parts = _split_link_code(code)
+    return int(parts[0]) if parts else None
+
+
+def verify_telegram_link_code(
+    code: str, user_id: int, chat_id: Optional[str], now: Optional[datetime] = None
+) -> bool:
+    """True when the code was made for this account in its current Telegram state and has not expired."""
+    parts = _split_link_code(code)
+    if not parts:
+        return False
+    code_user_id, expires, signature = parts
+    if int(code_user_id) != int(user_id):
+        return False
+    try:
+        expected = _link_signature(code_user_id, expires, chat_id)
+        if not hmac.compare_digest(signature.encode(), expected.encode()):
+            return False
+    except UnicodeError:
+        return False
+    return int(expires) >= _epoch(now or datetime.utcnow())

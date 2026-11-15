@@ -1,5 +1,5 @@
 // "Manage your subscription": mail a manage link. The reply is the same for every address.
-import { api, busy, emailRule, formStatus, validator } from './app.js?v=5';
+import { api, busy, emailRule, formStatus, validator } from 'app';
 
 const form = document.getElementById('requestForm');
 const email = form.elements.email;

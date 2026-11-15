@@ -3,7 +3,7 @@
 import {
   api, busy, categoryPicker, categoriesRule, channelsRule, fillSettings, formStatus,
   linkEmailDelivery, numberRules, readSettings, say, showFieldError, clearFieldError, validator,
-} from './app.js?v=5';
+} from 'app';
 
 const $ = (id) => document.getElementById(id);
 const token = $('prefs').dataset.token;

@@ -2,7 +2,7 @@
 import {
   api, busy, categoryPicker, categoriesRule, channelsRule, emailRule, formStatus,
   linkEmailDelivery, numberRules, readSettings, validator,
-} from './app.js?v=5';
+} from 'app';
 
 const form = document.getElementById('subscribeForm');
 const done = document.getElementById('done');
@@ -17,8 +17,7 @@ const validate = validator([emailRule(email), channelsRule(form), categoriesRule
 
 function showDone(data, settings) {
   // Telegram-only signups still get an email (it holds the manage link), but Telegram is the next step.
-  let kind = ['updated', 'reactivated'].includes(data.status) ? data.status : 'created';
-  if (kind === 'created' && !settings.receive_email && data.telegram_link) kind = 'telegram';
+  const kind = !settings.receive_email && data.telegram_link ? 'telegram' : 'created';
 
   for (const block of done.querySelectorAll('[data-done]')) block.hidden = block.dataset.done !== kind;
   for (const slot of done.querySelectorAll('[data-email]')) slot.textContent = data.email;

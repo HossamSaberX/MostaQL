@@ -49,12 +49,16 @@ class SubscriptionError(Exception):
         super().__init__(detail)
 
 
+# The one reply to every signup, new address or not, so the form cannot reveal who has an account.
+CHECK_INBOX = "تحقق من بريدك: أرسلنا إليه رابطًا لإكمال الاشتراك."
+
+
 @dataclass
 class SubscriptionResult:
     user: User
     message: str
-    status: str = "created"
-    send_verification: bool = False
+    send_verification: bool = False  # a new or never-confirmed account: send the confirmation link
+    send_manage_link: bool = False   # a confirmed account: mail its owner the manage link, change nothing
     token: Optional[str] = None
 
 
@@ -149,42 +153,19 @@ class SubscriptionService:
     def _handle_existing_user(
         self, user: User, category_ids: List[int], cleaned: Dict[str, Any]
     ) -> SubscriptionResult:
+        # Anyone can type any address, so a confirmed account is never changed from here: its
+        # owner gets a manage link by email instead, and the reply matches a new signup's.
+        if user.verified:
+            return SubscriptionResult(user=user, message=CHECK_INBOX, send_manage_link=True)
+
+        # Never confirmed: take the new choices and send a fresh confirmation link.
         self._replace_user_categories(user.id, category_ids)
         self._apply_settings(user, cleaned)
-
-        # Case 1: verified and active, so this only updates the choices.
-        if user.verified and not user.unsubscribed:
-            self.db.commit()
-            return SubscriptionResult(
-                user=user,
-                message="هذا البريد مشترك من قبل، وحفظنا اختياراتك الجديدة.",
-                status="updated",
-                token=user.token,
-            )
-
-        # Case 2: verified but stopped earlier: welcome back.
-        if user.verified and user.unsubscribed:
-            user.unsubscribed = False
-            self.db.commit()
-            return SubscriptionResult(
-                user=user,
-                message="مرحبًا بعودتك! عادت التنبيهات للعمل باختياراتك الجديدة.",
-                status="reactivated",
-                token=user.token,
-            )
-
-        # Case 3: never confirmed: send a fresh confirmation link.
         user.unsubscribed = False
         user.token = generate_token()
         user.token_issued_at = datetime.utcnow()
         self.db.commit()
-        return SubscriptionResult(
-            user=user,
-            message="أرسلنا رابط التأكيد إلى بريدك.",
-            status="created",
-            send_verification=True,
-            token=user.token,
-        )
+        return SubscriptionResult(user=user, message=CHECK_INBOX, send_verification=True, token=user.token)
 
     def _create_new_user(
         self, email: str, category_ids: List[int], cleaned: Dict[str, Any]
@@ -203,10 +184,4 @@ class SubscriptionService:
         for category_id in category_ids:
             self.db.add(UserCategory(user_id=user.id, category_id=category_id))
         self.db.commit()
-        return SubscriptionResult(
-            user=user,
-            message="أرسلنا رابط التأكيد إلى بريدك.",
-            status="created",
-            send_verification=True,
-            token=token,
-        )
+        return SubscriptionResult(user=user, message=CHECK_INBOX, send_verification=True, token=token)

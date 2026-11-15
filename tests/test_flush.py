@@ -174,7 +174,7 @@ def test_a_flood_becomes_three_messages_and_a_more_line_but_every_row_is_account
     assert len(task.notification_ids) == 35
     assert len(task.texts) == 3
     assert [text.count("mostaql.com/project/") for text in task.texts] == [10, 10, 10]
-    assert task.texts[-1].endswith('<a href="https://mostaql.com/projects">و5 أخرى</a>')
+    assert task.texts[-1].endswith('<a href="https://mostaql.com/projects">و5 مشاريع أخرى</a>')
     assert set(statuses(env.db).values()) == {"queued"}
 
 
@@ -300,6 +300,32 @@ def test_hourly_digest_still_rushes_a_past_client_project(env):
     notifier.flush_notifications(NOW)
 
     assert len(env.emails) == 1
+
+
+@pytest.mark.parametrize("delivery", ["hourly", "daily"])
+def test_a_past_client_project_goes_alone_and_the_digest_keeps_waiting(env, delivery):
+    add_user(env.db, delivery=delivery)
+    env.db.add(FollowedClient(user_id=1, profile_url=CLIENT))
+    add_job(env.db, 1)
+    add_job(env.db, 2, client=CLIENT)
+    waiting = add_row(env.db, 1, 1, age=timedelta(minutes=10))
+    rushed = add_row(env.db, 1, 2)
+    # 07:00 in Cairo: neither the hourly nor the daily digest is due yet.
+    before_digest = NOW - timedelta(hours=5)
+    waiting.created_at = before_digest - timedelta(minutes=10)
+    rushed.created_at = before_digest
+    env.db.commit()
+
+    notifier.flush_notifications(before_digest)
+
+    (task,) = env.emails
+    assert task.notification_ids == [rushed.id]
+    assert statuses(env.db)[waiting.id] == "pending"
+
+    # At the digest's normal time the rest goes out.
+    notifier.flush_notifications(NOW + timedelta(hours=1))
+    assert len(env.emails) == 2
+    assert env.emails[1].notification_ids == [waiting.id]
 
 
 @pytest.mark.parametrize(

@@ -3,14 +3,13 @@ Verify and unsubscribe endpoints
 """
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request
 from fastapi.responses import JSONResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import distinct, func
 from sqlalchemy.orm import Session
 from loguru import logger
 from datetime import datetime, timedelta
 from typing import Any, Dict
-import os
 
+from backend.templating import templates
 from backend.database import get_db, Notification, User
 from backend.enums import NotificationStatus
 from backend.utils.security import is_token_expired
@@ -32,8 +31,6 @@ from backend.services.client_tracking import (
     remove_followed_client,
 )
 
-templates_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
-templates = Jinja2Templates(directory=templates_dir)
 
 router = APIRouter()
 
@@ -49,7 +46,7 @@ def _user_by_token(db: Session, token: str) -> User:
 
 def _telegram_link(user: User):
     """The one-tap link to connect Telegram, or None when it is already connected."""
-    return None if user.telegram_chat_id else telegram_link_url(user.id)
+    return None if user.telegram_chat_id else telegram_link_url(user)
 
 
 def _sent_this_week(db: Session, user: User) -> int:

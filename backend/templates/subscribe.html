@@ -53,21 +53,13 @@
         <span class="status-icon status-icon--success">{{ icon("mail") }}</span>
         <div data-done="created" hidden>
             <h2 tabindex="-1">تحقق من بريدك</h2>
-            <p>أرسلنا رابط التأكيد إلى <bdi data-email></bdi>. افتحه لتبدأ التنبيهات.</p>
+            <p>أرسلنا رسالة إلى <bdi data-email></bdi>. افتح الرابط الذي فيها لتكمل.</p>
             <p class="hint">لم تجده؟ انظر في الرسائل غير المرغوب فيها.</p>
         </div>
         <div data-done="telegram" hidden>
             <h2 tabindex="-1">خطوة أخيرة: اربط تيليجرام</h2>
             <p>اضغط الزر، ثم «ابدأ» في البوت. ستصلك التنبيهات هناك.</p>
             <p class="hint">أرسلنا أيضًا إلى <bdi data-email></bdi> رابطًا لإدارة اشتراكك.</p>
-        </div>
-        <div data-done="updated" hidden>
-            <h2 tabindex="-1">حفظنا اختياراتك</h2>
-            <p>البريد <bdi data-email></bdi> مشترك من قبل، وحدّثنا تصنيفاته وفلاتره.</p>
-        </div>
-        <div data-done="reactivated" hidden>
-            <h2 tabindex="-1">مرحبًا بعودتك</h2>
-            <p>عادت التنبيهات للعمل على <bdi data-email></bdi> باختياراتك الجديدة.</p>
         </div>
         <p class="hint" id="doneTelegramHint" hidden>لا تريد الانتظار؟ اربط تيليجرام الآن.</p>
         <div class="actions">
@@ -79,5 +71,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script type="module" src="/assets/home.js?v=5"></script>
+<script type="module" src="/assets/home.js?v={{ asset_version }}"></script>
 {% endblock %}

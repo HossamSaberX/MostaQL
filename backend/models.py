@@ -50,7 +50,7 @@ class SubscribeRequest(AlertSettings):
 
 
 class SubscribeResponse(BaseModel):
-    """Response model for subscription. telegram_link connects Telegram in one tap (new accounts only)."""
+    """Response model for subscription: the same for every address. telegram_link connects Telegram in one tap (unconfirmed accounts only)."""
     message: str
     email: str
     status: str = "created"
@@ -59,7 +59,7 @@ class SubscribeResponse(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "message": "أرسلنا رابط التأكيد إلى بريدك.",
+                "message": "تحقق من بريدك: أرسلنا إليه رابطًا لإكمال الاشتراك.",
                 "email": "user@example.com",
                 "status": "created",
                 "telegram_link": "https://t.me/example_bot?start=12_1763200000_abc",
