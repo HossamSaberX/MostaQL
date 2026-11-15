@@ -7,7 +7,6 @@ phrase is written once. Digits are always Western (1, 2, 3).
 from typing import Any, Dict, List, Optional, Tuple
 
 from backend.config import settings
-from backend.utils.security import make_telegram_link_code
 
 SERVICE_NAME = "تنبيهات مستقل"
 ANNOUNCEMENT_TITLE = f"إعلان من {SERVICE_NAME}"
@@ -24,21 +23,24 @@ BOT_COMMANDS = (
     ("stop", "إيقاف تنبيهات تيليجرام"),
 )
 
-# One, two, 3-10, 11+ (the form after the number). Used for every count.
-_MORE_PROJECTS = ("مشروع آخر", "مشروعان آخران", "مشاريع أخرى", "مشروعًا آخر")
-_PROJECTS = ("مشروع جديد واحد", "مشروعان جديدان", "مشاريع جديدة", "مشروعًا جديدًا")
-_MINUTES = ("دقيقة واحدة", "دقيقتان", "دقائق", "دقيقة")
-_HOURS = ("ساعة واحدة", "ساعتان", "ساعات", "ساعة")
-_HOURS_AFTER_FOR = ("ساعة واحدة", "ساعتين", "ساعات", "ساعة")
+# Arabic counting (CLDR): one, two, then by n % 100: 3-10 "few", 11-99 "many", else "other"
+# (100, 101, 102, 200...). Each tuple is (one, two, few, many, other); used for every count.
+_MORE_PROJECTS = ("مشروع آخر", "مشروعان آخران", "مشاريع أخرى", "مشروعًا آخر", "مشروع آخر")
+_PROJECTS = ("مشروع جديد واحد", "مشروعان جديدان", "مشاريع جديدة", "مشروعًا جديدًا", "مشروع جديد")
+_MINUTES = ("دقيقة واحدة", "دقيقتان", "دقائق", "دقيقة", "دقيقة")
+_HOURS = ("ساعة واحدة", "ساعتان", "ساعات", "ساعة", "ساعة")
+_HOURS_AFTER_FOR = ("ساعة واحدة", "ساعتين", "ساعات", "ساعة", "ساعة")
 
 
-def _count(n: int, forms: Tuple[str, str, str, str]) -> str:
-    one, two, few, many = forms
+def _count(n: int, forms: Tuple[str, str, str, str, str]) -> str:
+    one, two, few, many, other = forms
     if n == 1:
         return one
     if n == 2:
         return two
-    return f"{n} {few if 3 <= n <= 10 else many}"
+    rest = n % 100
+    form = few if 3 <= rest <= 10 else many if 11 <= rest <= 99 else other
+    return f"{n} {form}"
 
 
 def more_projects(n: int) -> str:
@@ -129,14 +131,3 @@ def unsubscribe_request_url() -> str:
 def manage_button(token: str) -> Tuple[str, str]:
     """(label, url) of the Telegram button under alerts."""
     return (f"⚙️ {MANAGE_ALERTS}", manage_url(token))
-
-
-def telegram_link_url(user: Any) -> Optional[str]:
-    """
-    Deep link that connects Telegram to this account; None when no bot is configured.
-    It stops working once any chat is linked to the account.
-    """
-    if not settings.telegram_bot_username:
-        return None
-    code = make_telegram_link_code(user.id, user.telegram_chat_id)
-    return f"https://t.me/{settings.telegram_bot_username}?start={code}"

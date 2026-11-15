@@ -16,7 +16,7 @@ from backend.config import settings
 from backend.database import User, UserCategory, Category
 from backend.enums import EmailDelivery
 from backend.services.text import normalize, split_entries
-from backend.utils.security import generate_token
+from backend.utils.security import generate_token, is_token_expired, make_telegram_link_code, new_link_nonce
 
 MAX_WORDS = 20
 MAX_WORD_LENGTH = 40
@@ -49,17 +49,44 @@ class SubscriptionError(Exception):
         super().__init__(detail)
 
 
-# The one reply to every signup, new address or not, so the form cannot reveal who has an account.
-CHECK_INBOX = "تحقق من بريدك: أرسلنا إليه رابطًا لإكمال الاشتراك."
+# The one reply to every signup: the address gets a confirmation link or, when it already has
+# an account, its manage link. Nothing about the account is changed from the form.
+CHECK_INBOX = "تحقق من بريدك: أرسلنا إليه رابطًا لتأكيد اشتراكك أو لإدارته."
 
 
 @dataclass
 class SubscriptionResult:
     user: User
     message: str
-    send_verification: bool = False  # a new or never-confirmed account: send the confirmation link
-    send_manage_link: bool = False   # a confirmed account: mail its owner the manage link, change nothing
+    created: bool = False            # the account was created by this request
+    send_verification: bool = False  # send the confirmation link for `token`
+    send_manage_link: bool = False   # a confirmed or Telegram-linked account: mail its owner the manage link
     token: Optional[str] = None
+
+
+def confirmation_expired(user: User) -> bool:
+    """Whether the account's confirmation link is too old to use."""
+    return is_token_expired(user.token_issued_at or user.created_at, settings.verification_token_expiry_hours)
+
+
+def renew_token(user: User) -> None:
+    """A new account token (old links stop working), and no open Telegram link."""
+    user.token = generate_token()
+    user.token_issued_at = datetime.utcnow()
+    user.telegram_link_nonce = None
+
+
+def issue_telegram_link(db: Session, user: User) -> Optional[str]:
+    """
+    The one-tap link that connects Telegram to this account, or None when no bot is configured.
+    Each call opens a new link and closes every older one; the bot closes it once it is used.
+    """
+    if not settings.telegram_bot_username:
+        return None
+    user.telegram_link_nonce = new_link_nonce()
+    db.commit()
+    code = make_telegram_link_code(user.id, user.telegram_link_nonce)
+    return f"https://t.me/{settings.telegram_bot_username}?start={code}"
 
 
 def clean_word_list(raw: Optional[str], list_name: str) -> Optional[str]:
@@ -112,7 +139,7 @@ class SubscriptionService:
 
         user = self.db.query(User).filter(User.email == email).first()
         if user:
-            return self._handle_existing_user(user, normalized_ids, cleaned)
+            return self._handle_existing_user(user)
         return self._create_new_user(email, normalized_ids, cleaned)
 
     def update_preferences(
@@ -150,22 +177,16 @@ class SubscriptionService:
         for field, value in cleaned.items():
             setattr(user, field, value)
 
-    def _handle_existing_user(
-        self, user: User, category_ids: List[int], cleaned: Dict[str, Any]
-    ) -> SubscriptionResult:
-        # Anyone can type any address, so an account already in use (confirmed, or receiving
-        # Telegram alerts) is never changed from here: its owner gets a manage link by email
-        # instead, and the reply matches a new signup's.
+    def _handle_existing_user(self, user: User) -> SubscriptionResult:
+        # Anyone can type any address, so an existing account is never changed from here.
         if user.verified or user.telegram_chat_id:
             return SubscriptionResult(user=user, message=CHECK_INBOX, send_manage_link=True)
 
-        # Never confirmed: take the new choices and send a fresh confirmation link.
-        self._replace_user_categories(user.id, category_ids)
-        self._apply_settings(user, cleaned)
-        user.unsubscribed = False
-        user.token = generate_token()
-        user.token_issued_at = datetime.utcnow()
-        self.db.commit()
+        # Never confirmed: send the confirmation link again. Only when it is too old to work
+        # does the account get a new token, so the new email can be used.
+        if confirmation_expired(user):
+            renew_token(user)
+            self.db.commit()
         return SubscriptionResult(user=user, message=CHECK_INBOX, send_verification=True, token=user.token)
 
     def _create_new_user(
@@ -185,4 +206,6 @@ class SubscriptionService:
         for category_id in category_ids:
             self.db.add(UserCategory(user_id=user.id, category_id=category_id))
         self.db.commit()
-        return SubscriptionResult(user=user, message=CHECK_INBOX, send_verification=True, token=token)
+        return SubscriptionResult(
+            user=user, message=CHECK_INBOX, created=True, send_verification=True, token=token
+        )

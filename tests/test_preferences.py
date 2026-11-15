@@ -23,7 +23,7 @@ def response_json(response):
     return json.loads(response.body.decode("utf-8"))
 
 
-def test_subscription_persists_and_updates_smart_preferences():
+def test_subscription_persists_smart_preferences_and_a_second_signup_changes_nothing():
     session = make_session()
     service = SubscriptionService(session)
 
@@ -44,13 +44,12 @@ def test_subscription_persists_and_updates_smart_preferences():
     assert created.user.require_verified_client is True
     assert created.user.max_project_age_minutes == 15
 
-    updated = service.subscribe("smart@example.com", [1])
+    again = service.subscribe("smart@example.com", [1])
 
-    assert updated.user.require_projects_in_progress is False
-    assert updated.user.require_ongoing_communications is False
-    assert updated.user.min_budget_usd is None
-    assert updated.user.require_verified_client is False
-    assert updated.user.max_project_age_minutes is None
+    assert created.created is True and again.created is False
+    assert again.user.require_projects_in_progress is True
+    assert again.user.min_budget_usd == 250
+    assert again.user.max_project_age_minutes == 15
 
 
 def test_preferences_api_round_trip_includes_new_fields():

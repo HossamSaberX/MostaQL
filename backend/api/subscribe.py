@@ -11,9 +11,10 @@ from backend.models import SubscribeRequest, SubscribeResponse
 from backend.services.subscription_service import (
     SubscriptionService,
     SubscriptionError,
+    issue_telegram_link,
 )
 from backend.services.email import send_unsubscribe_email, send_verification_email
-from backend.services.messages import GENERIC_ERROR, telegram_link_url
+from backend.services.messages import GENERIC_ERROR
 from backend.utils.limiter import limiter
 
 router = APIRouter()
@@ -50,12 +51,11 @@ async def subscribe(
         f"Signup for {user.email}: {'manage link sent' if result.send_manage_link else 'confirmation sent'}"
     )
 
-    # The Telegram link goes only to an account this signup just created or re-confirmed (not
-    # confirmed, no chat yet). A confirmed account links Telegram from its own preferences page,
-    # which only the owner of the email can open.
+    # The Telegram link goes only to an account this request created. Any other account links
+    # Telegram from its confirmation or preferences page, which only the inbox's owner can open.
     telegram_link = None
-    if result.send_verification and user.receive_telegram and not user.telegram_chat_id:
-        telegram_link = telegram_link_url(user)
+    if result.created and user.receive_telegram and not user.telegram_chat_id:
+        telegram_link = issue_telegram_link(db, user)
 
     return SubscribeResponse(
         message=result.message,

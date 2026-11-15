@@ -35,29 +35,29 @@ def _epoch(moment: datetime) -> int:
     return calendar.timegm(moment.utctimetuple())
 
 
-def _link_signature(user_id: str, expires: str, chat_id: Optional[str]) -> str:
-    # The chat currently linked ("none" when there is none) is signed too, so linking a chat
-    # makes every older code stop working: a code is good for one link, without storing it.
-    message = f"{user_id}_{expires}_{chat_id or 'none'}"
+def new_link_nonce() -> str:
+    """The one-time part of a Telegram link, stored on the account until the link is used."""
+    return secrets.token_urlsafe(16)
+
+
+def _link_signature(user_id: str, expires: str, nonce: str) -> str:
+    message = f"{user_id}_{expires}_{nonce}"
     digest = hmac.new(
         settings.secret_key.encode(), _TELEGRAM_LINK_PURPOSE + message.encode(), hashlib.sha256
     ).digest()
     return base64.urlsafe_b64encode(digest[:16]).rstrip(b"=").decode()
 
 
-def make_telegram_link_code(
-    user_id: int, chat_id: Optional[str] = None, now: Optional[datetime] = None
-) -> str:
+def make_telegram_link_code(user_id: int, nonce: str, now: Optional[datetime] = None) -> str:
     """
     A signed code for the Telegram deep link: "<user id>_<expiry>_<signature>".
 
-    It proves only "this person may link a chat to this account" for a day, and only until a
-    chat is linked (`chat_id` is the account's linked chat now, if any). Unlike the account
-    token it cannot read or change preferences. Characters are [0-9A-Za-z_-], well under
-    Telegram's 64-character limit.
+    It proves only "this person may link a chat to this account", for a day and only while
+    `nonce` is the one stored on the account. Unlike the account token it cannot read or
+    change preferences. Characters are [0-9A-Za-z_-], well under Telegram's 64-character limit.
     """
     expires = str(_epoch(now or datetime.utcnow()) + TELEGRAM_LINK_CODE_HOURS * 3600)
-    return f"{int(user_id)}_{expires}_{_link_signature(str(int(user_id)), expires, chat_id)}"
+    return f"{int(user_id)}_{expires}_{_link_signature(str(int(user_id)), expires, nonce)}"
 
 
 def _split_link_code(code: str) -> Optional[Tuple[str, str, str]]:
@@ -82,9 +82,11 @@ def telegram_link_code_user_id(code: str) -> Optional[int]:
 
 
 def verify_telegram_link_code(
-    code: str, user_id: int, chat_id: Optional[str], now: Optional[datetime] = None
+    code: str, user_id: int, nonce: Optional[str], now: Optional[datetime] = None
 ) -> bool:
-    """True when the code was made for this account in its current Telegram state and has not expired."""
+    """True when the code was made for this account with its stored nonce and has not expired."""
+    if not nonce:
+        return False  # no link is open for this account
     parts = _split_link_code(code)
     if not parts:
         return False
@@ -92,7 +94,7 @@ def verify_telegram_link_code(
     if int(code_user_id) != int(user_id):
         return False
     try:
-        expected = _link_signature(code_user_id, expires, chat_id)
+        expected = _link_signature(code_user_id, expires, nonce)
         if not hmac.compare_digest(signature.encode(), expected.encode()):
             return False
     except UnicodeError:

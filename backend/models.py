@@ -50,7 +50,7 @@ class SubscribeRequest(AlertSettings):
 
 
 class SubscribeResponse(BaseModel):
-    """Response model for subscription: the same for every address. telegram_link connects Telegram in one tap (unconfirmed accounts only)."""
+    """Response model for subscription. telegram_link connects Telegram in one tap; only an account created by this request gets one."""
     message: str
     email: str
     status: str = "created"
@@ -59,7 +59,7 @@ class SubscribeResponse(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "message": "تحقق من بريدك: أرسلنا إليه رابطًا لإكمال الاشتراك.",
+                "message": "تحقق من بريدك: أرسلنا إليه رابطًا لتأكيد اشتراكك أو لإدارته.",
                 "email": "user@example.com",
                 "status": "created",
                 "telegram_link": "https://t.me/example_bot?start=12_1763200000_abc",
@@ -155,6 +155,11 @@ class DetailedHealthResponse(BaseModel):
 class UnsubscribeRequest(BaseModel):
     """Request model for unsubscribe request"""
     email: EmailStr = Field(..., description="User's email address")
+
+
+class TokenRequest(BaseModel):
+    """A request that only needs the account token."""
+    token: str = Field(..., description="User token")
 
 
 class PreferencesRequest(AlertSettings):

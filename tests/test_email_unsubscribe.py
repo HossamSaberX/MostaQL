@@ -123,14 +123,17 @@ def test_known_unknown_and_unsubscribed_addresses_get_the_same_answer(client, db
     assert answers[0].json()["message"] == verify.UNSUBSCRIBE_REQUEST_REPLY
 
 
-def test_the_link_is_mailed_only_to_a_registered_subscribed_address(client, db_session, mails):
+def test_the_link_is_mailed_to_every_registered_address_paused_ones_too(client, db_session, mails):
     add_user(db_session, id=1, email="known@example.com", token="a")
     add_user(db_session, id=2, email="gone@example.com", token="b", unsubscribed=True)
 
-    for email in ("known@example.com", "nobody@example.com", "gone@example.com"):
-        client.post("/api/unsubscribe-request", json={"email": email})
+    replies = {
+        client.post("/api/unsubscribe-request", json={"email": email}).text
+        for email in ("known@example.com", "nobody@example.com", "gone@example.com")
+    }
 
-    assert mails == [("known@example.com", "a")]
+    assert mails == [("known@example.com", "a"), ("gone@example.com", "b")]
+    assert len(replies) == 1  # the same words for every address
 
 
 def test_unsubscribe_request_is_rate_limited(client, db_session, mails):

@@ -45,11 +45,13 @@ def save(client, **changes):
     return client.post("/api/preferences", json=body)
 
 
-def link_code(url):
+def link_code(session, url):
     """The account a deep link may connect, or None when its code does not verify."""
+    session.rollback()  # only what was committed counts
     code = url.split("start=", 1)[1]
     user_id = telegram_link_code_user_id(code)
-    return user_id if verify_telegram_link_code(code, user_id, None) else None
+    user = session.get(User, user_id)
+    return user_id if user and verify_telegram_link_code(code, user_id, user.telegram_link_nonce) else None
 
 
 # ---- preferences: reading ------------------------------------------------------------------
@@ -65,7 +67,7 @@ def test_preferences_show_everything_the_page_needs(client, world):
     assert data["email_delivery"] == "instant"
     assert data["keywords_include"] == "" and data["keywords_exclude"] == ""
     assert data["telegram_linked"] is False
-    assert link_code(data["telegram_link"]) == 1
+    assert link_code(world, data["telegram_link"]) == 1
     assert data["sent_this_week"] == 0
     assert data["sent_this_week_text"] == "لم نرسل لك مشاريع هذا الأسبوع بعد."
 
@@ -246,7 +248,7 @@ def test_a_new_signup_gets_a_telegram_link_and_never_the_account_token(client, w
     assert data["status"] == "created"
     assert "token" not in data
     user = world.query(User).filter_by(email="new@example.com").one()
-    assert link_code(data["telegram_link"]) == user.id
+    assert link_code(world, data["telegram_link"]) == user.id
     assert user.token not in response.text
     assert user.email_delivery == "hourly"
     assert user.keywords_include == "شعار"
@@ -308,18 +310,47 @@ def test_a_telegram_only_account_is_not_changed_either(client, world, bot_and_no
     assert bot_and_no_mail[-1] == ("manage", "new@example.com")
 
 
-def test_an_unconfirmed_account_gets_a_new_confirmation_link(client, world, bot_and_no_mail):
-    client.post("/api/subscribe", json={"email": "new@example.com", "category_ids": [2]})
-    first_token = world.query(User).filter_by(email="new@example.com").one().token
+def test_an_unconfirmed_account_is_not_changed_and_gets_its_confirmation_link_again(client, world, monkeypatch):
+    tokens = []
+    monkeypatch.setattr(subscribe, "send_verification_email", lambda email, token: tokens.append(token))
+    first = client.post("/api/subscribe", json={"email": "new@example.com", "category_ids": [2]}).json()
+    user = world.query(User).filter_by(email="new@example.com").one()
+    token, nonce = user.token, user.telegram_link_nonce
 
-    data = client.post("/api/subscribe", json={"email": "new@example.com", "category_ids": [3]}).json()
+    data = client.post(
+        "/api/subscribe",
+        json={"email": "new@example.com", "category_ids": [3], "receive_email": False, "min_budget_usd": 999},
+    ).json()
 
     world.expire_all()
     user = world.query(User).filter_by(email="new@example.com").one()
-    assert user.token != first_token
-    assert [c.category_id for c in user.categories] == [3]
-    assert link_code(data["telegram_link"]) == user.id
-    assert bot_and_no_mail == ["new@example.com", "new@example.com"]
+    assert (user.token, user.telegram_link_nonce) == (token, nonce)
+    assert [c.category_id for c in user.categories] == [2]
+    assert user.receive_email is True and user.min_budget_usd is None
+    assert data["telegram_link"] is None
+    assert data["message"] == first["message"]
+    assert tokens == [token, token]  # the same, still valid, confirmation link
+
+
+def test_an_unconfirmed_account_with_an_expired_link_gets_a_new_one(client, world, monkeypatch):
+    tokens = []
+    monkeypatch.setattr(subscribe, "send_verification_email", lambda email, token: tokens.append(token))
+    world.add(User(id=2, email="old@example.com", token="old", verified=False, telegram_link_nonce="n" * 22,
+                   token_issued_at=datetime.utcnow() - timedelta(hours=settings.verification_token_expiry_hours + 1)))
+    world.add(UserCategory(user_id=2, category_id=1))
+    world.commit()
+
+    data = client.post("/api/subscribe", json={"email": "old@example.com", "category_ids": [3]}).json()
+
+    world.expire_all()
+    user = world.get(User, 2)
+    assert user.token != "old" and tokens == [user.token]
+    assert user.telegram_link_nonce is None
+    assert [c.category_id for c in user.categories] == [1]
+    assert data["telegram_link"] is None
+    assert client.get(f"/api/verify/{user.token}").status_code == 200
+    world.expire_all()
+    assert world.get(User, 2).verified is True
 
 
 def test_subscribe_errors_are_arabic(client, world):
@@ -364,3 +395,79 @@ def test_an_unknown_confirmation_link_says_so(client, world):
 
     assert response.status_code == 200
     assert "الرابط غير صالح" in response.text
+
+
+def test_confirming_closes_an_older_telegram_link_and_opens_a_new_one(client, world):
+    world.add(User(id=2, email="new@example.com", token="fresh", verified=False,
+                   token_issued_at=datetime.utcnow(), telegram_link_nonce="old-nonce"))
+    world.commit()
+
+    page = client.get("/api/verify/fresh").text
+
+    world.rollback()
+    nonce = world.get(User, 2).telegram_link_nonce
+    assert nonce not in (None, "old-nonce")
+    url = page.split('href="https://t.me/alerts_bot?start=', 1)[1].split('"', 1)[0]
+    assert link_code(world, f"start={url}") == 2
+
+
+def test_confirming_without_telegram_just_closes_the_old_link(client, world):
+    world.add(User(id=2, email="new@example.com", token="fresh", verified=False, receive_telegram=False,
+                   token_issued_at=datetime.utcnow(), telegram_link_nonce="old-nonce"))
+    world.commit()
+
+    page = client.get("/api/verify/fresh").text
+
+    world.rollback()
+    assert world.get(User, 2).telegram_link_nonce is None
+    assert "t.me" not in page
+
+
+@pytest.mark.parametrize("paused, words", [(False, "التنبيهات تعمل"), (True, "التنبيهات متوقفة")])
+def test_an_already_confirmed_link_shows_the_real_state_and_no_new_telegram_link(client, world, paused, words):
+    user = reload_user(world)
+    user.unsubscribed = paused
+    user.telegram_link_nonce = "open-nonce"
+    world.commit()
+
+    page = client.get("/api/verify/tok").text
+
+    assert words in page
+    assert "t.me" not in page
+    assert "/api/unsubscribe/tok" in page
+    world.rollback()
+    assert world.get(User, 1).telegram_link_nonce == "open-nonce"  # a scanner reopening it changes nothing
+
+
+# ---- disconnecting Telegram ----------------------------------------------------------------
+
+
+def test_disconnecting_telegram_clears_the_chat_and_offers_a_fresh_link(client, world):
+    user = reload_user(world)
+    user.telegram_chat_id = "666"
+    world.commit()
+
+    response = client.post("/api/preferences/telegram/unlink", json={"token": "tok"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["message"] == "فصلنا تيليجرام عن حسابك."
+    assert data["telegram_linked"] is False
+    assert link_code(world, data["telegram_link"]) == 1
+    assert world.get(User, 1).telegram_chat_id is None
+
+
+def test_disconnecting_telegram_needs_the_account_token(client, world):
+    reload_user(world).telegram_chat_id = "666"
+    world.commit()
+
+    assert client.post("/api/preferences/telegram/unlink", json={"token": "nope"}).status_code == 404
+    assert reload_user(world).telegram_chat_id == "666"
+
+
+def test_each_preferences_load_closes_the_previous_link(client, world):
+    first = client.get("/api/preferences/tok").json()["telegram_link"]
+    second = client.get("/api/preferences/tok").json()["telegram_link"]
+
+    assert link_code(world, second) == 1
+    assert link_code(world, first) is None

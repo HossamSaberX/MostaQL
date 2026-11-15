@@ -11,7 +11,7 @@ from typing import Generator
 import os
 
 from backend.config import settings
-from backend.enums import EmailDelivery, NotificationChannel, NotificationStatus
+from backend.enums import EmailDelivery, NotificationStatus
 from backend.utils.logger import app_logger
 
 Base = declarative_base()
@@ -30,6 +30,7 @@ class User(Base):
     receive_email = Column(Boolean, default=True)
     receive_telegram = Column(Boolean, default=True)
     telegram_chat_id = Column(String(64), nullable=True, unique=True)
+    telegram_link_nonce = Column(String(32), nullable=True)  # the open Telegram link; cleared when used
     min_hiring_rate = Column(Float, nullable=True)
     require_projects_in_progress = Column(Boolean, default=False, nullable=False)
     require_ongoing_communications = Column(Boolean, default=False, nullable=False)
@@ -160,7 +161,7 @@ class Notification(Base):
     job_id = Column(Integer, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
     channel = Column(String(20), nullable=True)
     created_at = Column(TIMESTAMP, nullable=True, default=datetime.utcnow)
-    sent_at = Column(TIMESTAMP, default=datetime.utcnow)
+    sent_at = Column(TIMESTAMP, nullable=True)  # set by the send worker
     status = Column(String(20), default=NotificationStatus.PENDING.value)
     error_message = Column(Text, nullable=True)
     

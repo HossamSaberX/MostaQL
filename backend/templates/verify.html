@@ -8,7 +8,11 @@
 {% set state = status or request.query_params.get("status") %}
 {% if state == "success" %}
     {% call status_panel("success", "check", "تم تأكيد بريدك") %}
-        <p>ستصلك المشاريع الجديدة في التصنيفات التي اخترتها.</p>
+        {% if paused %}
+            <p>التنبيهات متوقفة الآن. أعد تفعيلها من صفحة إدارة التنبيهات.</p>
+        {% else %}
+            <p>ستصلك المشاريع الجديدة في التصنيفات التي اخترتها.</p>
+        {% endif %}
         {% if telegram_link %}
             <p class="hint">اربط تيليجرام لتصلك التنبيهات على هاتفك أيضًا.</p>
             {{ telegram_button(telegram_link) }}
@@ -18,7 +22,11 @@
     {% endcall %}
 {% elif state == "already_verified" %}
     {% call status_panel("success", "check", "بريدك مؤكد من قبل") %}
-        <p>لا حاجة لفعل شيء. التنبيهات تعمل.</p>
+        {% if paused %}
+            <p>التنبيهات متوقفة الآن. أعد تفعيلها من صفحة إدارة التنبيهات.</p>
+        {% else %}
+            <p>لا حاجة لفعل شيء. التنبيهات تعمل.</p>
+        {% endif %}
         {% if telegram_link %}
             {{ telegram_button(telegram_link) }}
         {% elif manage_link %}

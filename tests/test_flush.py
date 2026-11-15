@@ -248,6 +248,32 @@ def test_a_past_client_project_skips_the_ten_minute_wait(env):
     assert sorted(task.notification_ids) == sorted([ordinary.id, past_client.id])
 
 
+def test_an_email_with_only_past_client_projects_does_not_hold_ordinary_alerts(env):
+    # A busy followed client must not keep renewing the wait for everything else.
+    add_user(env.db)
+    env.db.add(FollowedClient(user_id=1, profile_url=CLIENT))
+    add_job(env.db, 1, client=CLIENT)
+    add_job(env.db, 2)
+    add_row(env.db, 1, 1, status="sent", sent_at=NOW)
+    ordinary = add_row(env.db, 1, 2)
+
+    notifier.flush_notifications(NOW + timedelta(minutes=1))
+
+    (task,) = env.emails
+    assert task.notification_ids == [ordinary.id]
+
+
+def test_a_new_row_has_no_sent_time_until_it_is_sent(env):
+    add_user(env.db)
+    add_job(env.db, 1)
+    env.db.add(Notification(user_id=1, job_id=1, channel="email", status="pending"))
+    env.db.commit()
+
+    row = env.db.query(Notification).one()
+    assert row.sent_at is None
+    assert row.created_at is not None
+
+
 def test_an_email_still_being_sent_holds_the_next_one(env):
     add_user(env.db)
     add_job(env.db, 1)

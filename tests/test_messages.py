@@ -21,13 +21,32 @@ def test_count_projects_has_correct_arabic_agreement():
     assert count_projects(0) == "لا مشاريع جديدة"
 
 
+def test_counting_follows_the_hundreds_rule():
+    expected = {
+        1: "مشروع جديد واحد",
+        2: "مشروعان جديدان",
+        3: "3 مشاريع جديدة",
+        10: "10 مشاريع جديدة",
+        11: "11 مشروعًا جديدًا",
+        99: "99 مشروعًا جديدًا",
+        100: "100 مشروع جديد",
+        101: "101 مشروع جديد",
+        102: "102 مشروع جديد",
+        103: "103 مشاريع جديدة",
+        111: "111 مشروعًا جديدًا",
+    }
+    assert {n: count_projects(n) for n in expected} == expected
+    assert more_projects(101) == "و101 مشروع آخر"
+    assert valid_for_hours(100) == "هذا الرابط صالح لمدة 100 ساعة فقط"
+
+
 def test_more_projects_has_correct_arabic_agreement():
     assert more_projects(1) == "ومشروع آخر"
     assert more_projects(2) == "ومشروعان آخران"
     assert more_projects(3) == "و3 مشاريع أخرى"
     assert more_projects(10) == "و10 مشاريع أخرى"
     assert more_projects(11) == "و11 مشروعًا آخر"
-    assert more_projects(150) == "و150 مشروعًا آخر"
+    assert more_projects(150) == "و150 مشروعًا آخر"  # 150 % 100 = 50: "many"
 
 
 def test_validity_sentence_uses_the_given_hours():
@@ -87,3 +106,12 @@ def test_links_use_the_configured_site_address():
     assert manage_url("abc") == "https://alerts.test/api/unsubscribe/abc"
     assert messages.email_unsubscribe_url("abc") == "https://alerts.test/api/unsubscribe/abc/email"
     assert manage_button("abc") == ("⚙️ إدارة التنبيهات", "https://alerts.test/api/unsubscribe/abc")
+
+
+def test_both_verifications_are_joined_the_arabic_way():
+    from types import SimpleNamespace
+
+    from backend.services.notifier import _verification_label
+
+    job = SimpleNamespace(client_identity_verified=True, client_payment_verified=True)
+    assert _verification_label(job) == "موثق (الهوية والدفع)"

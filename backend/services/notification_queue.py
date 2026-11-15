@@ -11,12 +11,12 @@ from dataclasses import dataclass
 from queue import Queue
 from threading import Event, Thread
 from datetime import datetime
-from typing import Any, List, Dict, Optional, Generic, Tuple, TypeVar
+from typing import Any, Iterator, List, Dict, Optional, Generic, Tuple, TypeVar
 
 import requests
 
 from backend.database import SessionLocal, Notification, User
-from backend.enums import NotificationStatus
+from backend.enums import NotificationChannel, NotificationStatus
 from backend.config import settings
 from backend.services.messages import BOT_COMMANDS
 from backend.utils.logger import app_logger
@@ -26,6 +26,22 @@ TELEGRAM_TIMEOUT_SECONDS = 10
 TELEGRAM_MAX_RETRY_WAIT_SECONDS = 30
 
 Button = Tuple[str, str]  # (label, url)
+ID_CHUNK = 500  # ids per SQL IN (...) list
+
+
+def id_chunks(ids: List[int]) -> Iterator[List[int]]:
+    """The ids in slices small enough for one SQL IN (...) list."""
+    for start in range(0, len(ids), ID_CHUNK):
+        yield ids[start:start + ID_CHUNK]
+
+
+def can_receive(user: User, channel: str) -> bool:
+    """Whether this person can get alerts on this channel right now."""
+    if user.unsubscribed:
+        return False
+    if channel == NotificationChannel.EMAIL.value:
+        return bool(user.verified and user.receive_email)
+    return bool(user.telegram_chat_id and user.receive_telegram)
 
 
 def _telegram_post(method: str, payload: Dict[str, Any]) -> requests.Response:
@@ -60,7 +76,7 @@ def _unlink_telegram_chat(chat_id: str) -> None:
     db = SessionLocal()
     try:
         unlinked = db.query(User).filter(User.telegram_chat_id == chat_id).update(
-            {"telegram_chat_id": None}, synchronize_session=False
+            {"telegram_chat_id": None, "telegram_link_nonce": None}, synchronize_session=False
         )
         db.commit()
         if unlinked:
@@ -202,19 +218,26 @@ class BaseTaskQueue(ABC, Generic[T]):
                 self._queue.task_done()
                 continue
             try:
-                success = self._process_task(task)
-                if success:
-                    # app_logger.info(f"✓ {self._worker_name} task completed successfully")
-                    pass  # Individual processors (email/telegram) handle their own success logging
-                else:
-                    app_logger.warning(f"⚠ {self._worker_name} task returned failure")
-                
-                self._update_notification_status(task, success, None)
-            except Exception as exc:
-                app_logger.error(f"✗ {self._worker_name} task failed: {exc}")
-                self._update_notification_status(task, False, str(exc))
+                self._handle(task)
             finally:
                 self._queue.task_done()
+
+    def _handle(self, task: T) -> None:
+        """Send one task and record the outcome on its rows."""
+        try:
+            if task.notification_ids and not self._still_wanted(task):
+                app_logger.info(f"{self._worker_name}: recipient changed their settings; not sending")
+                self._update_notification_status(task, NotificationStatus.EXPIRED)
+                return
+            success = self._process_task(task)
+            if not success:
+                app_logger.warning(f"⚠ {self._worker_name} task returned failure")
+            self._update_notification_status(
+                task, NotificationStatus.SENT if success else NotificationStatus.FAILED
+            )
+        except Exception as exc:
+            app_logger.error(f"✗ {self._worker_name} task failed: {exc}")
+            self._update_notification_status(task, NotificationStatus.FAILED, str(exc))
 
     def _on_worker_start(self) -> None:
         pass
@@ -223,28 +246,44 @@ class BaseTaskQueue(ABC, Generic[T]):
     def _process_task(self, task: T) -> bool:
         pass
 
+    @abstractmethod
+    def _goes_to(self, user: User, task: T) -> bool:
+        """Whether this message may still go to this person, at the address it was made for."""
+
+    def _still_wanted(self, task: T) -> bool:
+        """Checked right before sending: the person may have stopped alerts since the flush."""
+        db = SessionLocal()
+        try:
+            user = db.get(User, task.user_ids[0]) if task.user_ids else None
+            return bool(user) and self._goes_to(user, task)
+        except Exception as exc:
+            app_logger.error(f"Could not recheck the recipient, sending anyway: {exc}")
+            return True
+        finally:
+            db.close()
+
     def _update_notification_status(
         self,
         task: T,
-        success: bool,
-        error_message: Optional[str],
+        status: NotificationStatus,
+        error_message: Optional[str] = None,
     ) -> None:
-        status = NotificationStatus.SENT.value if success else NotificationStatus.FAILED.value
+        sent = status == NotificationStatus.SENT
+        now = datetime.utcnow()
         db = SessionLocal()
         try:
-            db.query(Notification).filter(
-                Notification.id.in_(task.notification_ids)
-            ).update(
-                {
-                    "status": status,
-                    "sent_at": datetime.utcnow() if success else None,
-                    "error_message": error_message,
-                },
-                synchronize_session=False,
-            )
-            if success and task.user_ids:
+            for ids in id_chunks(task.notification_ids):
+                db.query(Notification).filter(Notification.id.in_(ids)).update(
+                    {
+                        "status": status.value,
+                        "sent_at": now if sent else None,
+                        "error_message": error_message,
+                    },
+                    synchronize_session=False,
+                )
+            if sent and task.user_ids:
                 db.query(User).filter(User.id.in_(task.user_ids)).update(
-                    {"last_notified_at": datetime.utcnow()},
+                    {"last_notified_at": now},
                     synchronize_session=False,
                 )
             db.commit()
@@ -259,6 +298,9 @@ class EmailTaskQueue(BaseTaskQueue[EmailTask]):
     def __init__(self) -> None:
         super().__init__("email-task-worker")
 
+    def _goes_to(self, user: User, task: EmailTask) -> bool:
+        return can_receive(user, NotificationChannel.EMAIL.value) and user.email == task.email
+
     def _process_task(self, task: EmailTask) -> bool:
         from backend.services.email import send_job_notifications
         return send_job_notifications(
@@ -271,6 +313,9 @@ class EmailTaskQueue(BaseTaskQueue[EmailTask]):
 class TelegramTaskQueue(BaseTaskQueue[TelegramTask]):
     def __init__(self) -> None:
         super().__init__("telegram-task-worker")
+
+    def _goes_to(self, user: User, task: TelegramTask) -> bool:
+        return can_receive(user, NotificationChannel.TELEGRAM.value) and user.telegram_chat_id == task.chat_id
 
     def _process_task(self, task: TelegramTask) -> bool:
         """Send every part, the first with a sound and the rest silently; stop at the first failure."""

@@ -1,9 +1,7 @@
 // Shared by every page: API calls, messages, field errors, the settings form and category chips.
 // Scraped text (category names, client labels) only ever goes in through textContent.
 
-export const API_BASE = ['5500', '5501'].includes(window.location.port)
-  ? 'http://localhost:8000/api'
-  : `${window.location.origin}/api`;
+export const API_BASE = `${window.location.origin}/api`;
 
 const NETWORK_ERROR = 'تعذر الاتصال. تحقق من الإنترنت ثم حاول مرة أخرى.';
 const SERVER_ERROR = 'حدث خطأ غير متوقع. حاول مرة أخرى بعد قليل.';
@@ -293,7 +291,7 @@ export function categoryPicker(field) {
   chips.addEventListener('change', update);
   search.addEventListener('input', filter);
 
-  const ready = api('/categories')
+  api('/categories')
     .then((categories) => {
       if (!categories.length) {
         chips.querySelector('p').textContent = 'لا توجد تصنيفات الآن. حدّث الصفحة بعد قليل.';
@@ -309,7 +307,6 @@ export function categoryPicker(field) {
 
   return {
     field,
-    ready,
     selected,
     set(ids) {
       wanted = new Set(ids.map(Number));

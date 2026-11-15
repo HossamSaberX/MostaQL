@@ -12,18 +12,21 @@ from typing import Any, Dict
 from backend.templating import templates
 from backend.database import get_db, Notification, User
 from backend.enums import NotificationStatus
-from backend.utils.security import is_token_expired
 from backend.config import settings
-from backend.models import UnsubscribeRequest, PreferencesRequest, FollowedClientRequest
+from backend.models import UnsubscribeRequest, PreferencesRequest, FollowedClientRequest, TokenRequest
 from backend.services.email import send_unsubscribe_email
 from backend.services.messages import (
     GENERIC_ERROR,
     count_projects,
     email_unsubscribe_url,
     manage_url,
-    telegram_link_url,
 )
-from backend.services.subscription_service import SubscriptionError, SubscriptionService
+from backend.services.subscription_service import (
+    SubscriptionError,
+    SubscriptionService,
+    confirmation_expired,
+    issue_telegram_link,
+)
 from backend.utils.limiter import limiter
 from backend.services.client_tracking import (
     FollowedClientError,
@@ -44,9 +47,9 @@ def _user_by_token(db: Session, token: str) -> User:
     return user
 
 
-def _telegram_link(user: User):
-    """The one-tap link to connect Telegram, or None when it is already connected."""
-    return None if user.telegram_chat_id else telegram_link_url(user)
+def _telegram_link(db: Session, user: User):
+    """A fresh one-tap link to connect Telegram, or None when it is already connected."""
+    return None if user.telegram_chat_id else issue_telegram_link(db, user)
 
 
 def _sent_this_week(db: Session, user: User) -> int:
@@ -78,7 +81,7 @@ def _preferences_payload(db: Session, user: User) -> Dict[str, Any]:
         "receive_telegram": user.receive_telegram,
         "email_delivery": user.email_delivery,
         "telegram_linked": bool(user.telegram_chat_id),
-        "telegram_link": _telegram_link(user),
+        "telegram_link": _telegram_link(db, user),
         "unsubscribed": user.unsubscribed,
         "verified": user.verified,
         "category_ids": sorted(link.category_id for link in user.categories),
@@ -117,12 +120,12 @@ async def request_unsubscribe(
     db: Session = Depends(get_db)
 ):
     """
-    Mail a manage-or-unsubscribe link to a subscribed address. The reply never says
-    whether the address exists.
+    Mail the manage link to any account, paused ones too (they can turn alerts back on there).
+    The reply never says whether the address exists.
     """
     try:
         user = db.query(User).filter(User.email == data.email).first()
-        if user and not user.unsubscribed:
+        if user:
             background_tasks.add_task(send_unsubscribe_email, user.email, user.token)
     except Exception as e:
         logger.error(f"Unsubscribe request error: {e}")
@@ -145,19 +148,22 @@ async def verify_email(token: str, request: Request, db: Session = Depends(get_d
             status = "invalid"
         elif user.verified:
             status = "already_verified"
-        elif is_token_expired(user.token_issued_at or user.created_at, settings.verification_token_expiry_hours):
+        elif confirmation_expired(user):
             logger.warning(f"Verification failed: Expired token for {user.email}")
             status = "expired"
         else:
             user.verified = True
+            user.telegram_link_nonce = None  # a Telegram link from before the inbox was proven stops working
             db.commit()
             logger.info(f"User verified successfully: {user.email}")
             status = "success"
 
         if status in ("success", "already_verified"):
             context["manage_link"] = manage_url(user.token)
-            if user.receive_telegram:
-                context["telegram_link"] = _telegram_link(user)
+            context["paused"] = bool(user.unsubscribed)
+        # Only right after confirming: a link scanner reopening the email must not replace it.
+        if status == "success" and user.receive_telegram:
+            context["telegram_link"] = _telegram_link(db, user)
     except Exception as e:
         logger.error(f"Verify error for token {token[:10]}...: {e}")
         db.rollback()
@@ -236,6 +242,23 @@ async def resubscribe(token: str, db: Session = Depends(get_db)):
 
     logger.info(f"User turned alerts back on: {user.email}")
     return JSONResponse(content={"message": "عادت التنبيهات للعمل.", **_preferences_payload(db, user)})
+
+
+@router.post("/preferences/telegram/unlink")
+async def unlink_telegram(data: TokenRequest, db: Session = Depends(get_db)):
+    """Disconnect the Telegram chat, for example one that was linked by mistake."""
+    user = _user_by_token(db, data.token)
+    try:
+        user.telegram_chat_id = None
+        user.telegram_link_nonce = None
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Telegram unlink error for token {data.token[:10]}...: {e}")
+        raise HTTPException(status_code=500, detail=GENERIC_ERROR)
+
+    logger.info(f"Telegram unlinked from the preferences page: {user.email}")
+    return JSONResponse(content={"message": "فصلنا تيليجرام عن حسابك.", **_preferences_payload(db, user)})
 
 
 @router.post("/preferences/clients")

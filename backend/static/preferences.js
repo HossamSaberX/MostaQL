@@ -31,6 +31,7 @@ function render(data) {
   $('resumeButton').hidden = active;
   $('stopSection').hidden = !active;
 
+  $('telegramError').textContent = '';
   $('telegramLinked').hidden = !data.telegram_linked;
   $('telegramNotLinked').hidden = data.telegram_linked || !data.telegram_link;
   if (data.telegram_link) $('telegramLink').href = data.telegram_link;
@@ -117,14 +118,33 @@ dialog.addEventListener('close', async () => {
   const choice = dialog.returnValue;
   dialog.returnValue = '';
   if (choice !== 'stop') return;
+  $('stopError').textContent = '';
   try {
     const data = await api(`/unsubscribe/${tokenPath}`, { method: 'POST' });
     render(data);
     say(pageStatus, data.message);
     $('resumeButton').focus(); // the stop button is gone; keep focus on the next useful action
   } catch (error) {
-    say($('resumeError'), error.message);
+    say($('stopError'), error.message); // next to the button that gets focus back
     $('stopButton').focus();
+  }
+});
+
+// ---- disconnecting Telegram ---------------------------------------------------------------
+
+$('telegramUnlink').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  $('telegramError').textContent = '';
+  busy(button, true, 'جارٍ الفصل…');
+  try {
+    const data = await api('/preferences/telegram/unlink', { method: 'POST', body: { token } });
+    busy(button, false);
+    render(data);
+    say(pageStatus, data.message);
+    $('telegramLink').focus(); // the disconnect button is gone; the connect button replaces it
+  } catch (error) {
+    busy(button, false);
+    say($('telegramError'), error.message);
   }
 });
 

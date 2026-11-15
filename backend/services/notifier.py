@@ -25,7 +25,14 @@ from backend.database import (
     FollowedClient,
 )
 from backend.enums import EmailDelivery, NotificationChannel, NotificationStatus
-from backend.services.notification_queue import EmailTask, TelegramTask, email_task_queue, telegram_task_queue
+from backend.services.notification_queue import (
+    EmailTask,
+    TelegramTask,
+    can_receive,
+    email_task_queue,
+    id_chunks,
+    telegram_task_queue,
+)
 from backend.services.client_tracking import client_profile_key
 from backend.services.messages import (
     count_projects,
@@ -53,7 +60,6 @@ DAILY_DIGEST_HOUR = 9
 DIGEST_TIMEZONE = "Africa/Cairo"
 
 _flush_lock = Lock()
-_ID_CHUNK = 500  # ids per SQL IN (...) list
 
 
 def _get_users_for_category(category_id: int, db) -> List[User]:
@@ -316,7 +322,7 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
         recipients: Dict[NotificationChannel, Set[int]] = {channel: set() for channel in NotificationChannel}
         rows = 0
         for user in users:
-            channels = [channel for channel in NotificationChannel if _can_receive(user, channel.value)]
+            channels = [channel for channel in NotificationChannel if can_receive(user, channel.value)]
             if not channels:
                 continue
             for job in _jobs_for_user(user, new_jobs, category_id):
@@ -359,10 +365,10 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
 def _set_status(db, ids: List[int], status: NotificationStatus, *, only_if: NotificationStatus) -> int:
     """Move rows from `only_if` to `status`; rows someone else already moved are left alone."""
     changed = 0
-    for start in range(0, len(ids), _ID_CHUNK):
+    for chunk in id_chunks(ids):
         changed += (
             db.query(Notification)
-            .filter(Notification.id.in_(ids[start:start + _ID_CHUNK]), Notification.status == only_if.value)
+            .filter(Notification.id.in_(chunk), Notification.status == only_if.value)
             .update({"status": status.value}, synchronize_session=False)
         )
     return changed
@@ -401,15 +407,6 @@ def _delivery_window(user: User, channel: str) -> timedelta:
     return DIGEST_WINDOWS.get(user.email_delivery, timedelta(0))
 
 
-def _can_receive(user: User, channel: str) -> bool:
-    """Whether this person can get alerts on this channel right now."""
-    if user.unsubscribed:
-        return False
-    if channel == NotificationChannel.EMAIL.value:
-        return bool(user.verified and user.receive_email)
-    return bool(user.telegram_chat_id and user.receive_telegram)
-
-
 def _todays_digest_time(now: datetime) -> datetime:
     """Today's 09:00 in Cairo as a naive UTC time (Cairo moves its clocks in summer)."""
     local = now.replace(tzinfo=timezone.utc).astimezone(ZoneInfo(DIGEST_TIMEZONE))
@@ -438,9 +435,13 @@ def _email_rows_due(user: User, rows: List[Notification], *, held: bool, now: da
 
 
 def _held_email_users(db, now: datetime) -> Set[int]:
-    """People whose last email went out in the cooldown or is still waiting to be sent."""
+    """
+    People whose last ordinary email went out in the cooldown or is still waiting to be sent.
+    Past-client projects never wait, so an email that carried only those does not start a wait.
+    """
     rows = (
-        db.query(Notification.user_id)
+        db.query(Notification)
+        .options(joinedload(Notification.user), joinedload(Notification.job))
         .filter(
             Notification.channel == NotificationChannel.EMAIL.value,
             or_(
@@ -451,10 +452,9 @@ def _held_email_users(db, now: datetime) -> Set[int]:
                 ),
             ),
         )
-        .distinct()
         .all()
     )
-    return {user_id for (user_id,) in rows}
+    return {row.user_id for row in rows if not _followed_client_for_job(row.user, row.job)}
 
 
 def _newest_first(jobs: Iterable[Job]) -> List[Job]:
@@ -513,7 +513,7 @@ def _flush_group(
     now: datetime,
 ):
     """Expire what is stale and, if a message is due, claim the rest. Returns (task, expired count)."""
-    allowed = _can_receive(user, channel)
+    allowed = can_receive(user, channel)
     cutoff = now - _delivery_window(user, channel) - EXPIRY_GRACE
     stale = [row for row in rows if not allowed or _created_at(row, now) < cutoff]
     stale_ids = {row.id for row in stale}
