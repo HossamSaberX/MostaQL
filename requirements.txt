@@ -14,6 +14,8 @@ apscheduler==3.10.4
 python-multipart==0.0.6
 lxml==5.1.0
 alembic==1.13.1
+# Time zone data for the 09:00 Cairo daily digest (the alpine image has none)
+tzdata==2026.6
 
 # Testing
 pytest==7.4.4

@@ -11,7 +11,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from backend.utils.logger import app_logger
 from backend.database import SessionLocal, Category
 from backend.services.scraper import poll_category
-from backend.services.notifier import process_new_jobs
+from backend.services.notifier import flush_notifications, process_new_jobs
 from backend.config import settings
 
 
@@ -65,6 +65,12 @@ def _run_scraper_job():
                     f"Error polling or notifying for category {category_id}: {category_error}"
                 )
         
+        # Once per cycle, also when nothing is new: hourly and daily digests are due by the clock.
+        try:
+            flush_notifications()
+        except Exception as flush_error:
+            app_logger.error(f"Error sending notifications: {flush_error}")
+
         if total_new_jobs == 0:
             app_logger.info(f"No new jobs found (skipped {skipped_count} categories)")
         else:

@@ -27,6 +27,7 @@ from backend.services.notification_queue import (
     register_bot_commands,
 )
 from backend.services.messages import GENERIC_ERROR, SERVICE_NAME
+from backend.services.notifier import reset_queued_notifications
 from backend.config import settings
 from alembic.config import Config
 from alembic import command
@@ -43,18 +44,22 @@ async def lifespan(app: FastAPI):
     
     os.makedirs("logs", exist_ok=True)
     
-    app_logger.info("Starting email task queue...")
-    email_task_queue.start()
-    
-    app_logger.info("Starting telegram task queue...")
-    telegram_task_queue.start()
-    
     app_logger.info("Running database migrations...")
     alembic_cfg = Config("alembic.ini")
     command.upgrade(alembic_cfg, "head")
     
     app_logger.info("Initializing database...")
     init_db()
+    
+    # The send queues are in memory and start empty, so notifications still marked queued
+    # by the previous run were never sent: let the next flush pick them up again.
+    reset_queued_notifications()
+    
+    app_logger.info("Starting email task queue...")
+    email_task_queue.start()
+    
+    app_logger.info("Starting telegram task queue...")
+    telegram_task_queue.start()
     
     if settings.telegram_bot_token:
         # Off the startup path: a slow Telegram must not delay the app.

@@ -63,6 +63,7 @@ def test_accepted_job_creates_row_and_queues_explanatory_payload(monkeypatch):
     monkeypatch.setattr(notifier.email_task_queue, "enqueue", emails.append)
 
     result = notifier.process_new_jobs([job], 1)
+    notifier.flush_notifications()
 
     assert result["notifications"] == 1
     assert session.query(Notification).count() == 1
@@ -91,6 +92,7 @@ def test_every_subscriber_gets_their_own_email_with_their_own_token(monkeypatch)
     monkeypatch.setattr(notifier.email_task_queue, "enqueue", emails.append)
 
     result = notifier.process_new_jobs([job], 1)
+    notifier.flush_notifications()
 
     assert result["queued_emails"] == 2
     assert {(task.email, task.unsubscribe_token) for task in emails} == {
@@ -113,6 +115,7 @@ def test_telegram_gets_one_task_with_a_manage_button(monkeypatch):
     monkeypatch.setattr(notifier.telegram_task_queue, "enqueue", tasks.append)
 
     result = notifier.process_new_jobs([job], 1)
+    notifier.flush_notifications()
 
     assert result["queued_telegram"] == 1
     (task,) = tasks

@@ -18,7 +18,9 @@ from backend.services.messages import (
     job_facts,
     job_reason,
     manage_url,
+    more_projects,
     order_jobs,
+    projects_url,
     unsubscribe_request_url,
     valid_for_hours,
 )
@@ -235,7 +237,7 @@ def render_alert_email(
     for job in shown:
         body.add(*_project_card(job))
     if hidden > 0:
-        body.link(f"و{hidden} أخرى", more_url or f"{settings.mostaql_base_url.rstrip('/')}/projects")
+        body.link(more_projects(hidden), more_url or projects_url())
 
     preheader = " · ".join(f"{label}: {value}" for label, value in job_facts(first)[:2]) or str(first["title"])
     return _finish(subject, count_projects(total), preheader, body, _subscriber_footer(token))

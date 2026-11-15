@@ -11,7 +11,7 @@ from typing import Generator
 import os
 
 from backend.config import settings
-from backend.enums import NotificationChannel, NotificationStatus
+from backend.enums import EmailDelivery, NotificationChannel, NotificationStatus
 from backend.utils.logger import app_logger
 
 Base = declarative_base()
@@ -36,6 +36,14 @@ class User(Base):
     min_budget_usd = Column(Float, nullable=True)
     require_verified_client = Column(Boolean, default=False, nullable=False)
     max_project_age_minutes = Column(Integer, nullable=True)
+    email_delivery = Column(
+        String(10),
+        nullable=False,
+        default=EmailDelivery.INSTANT.value,
+        server_default=EmailDelivery.INSTANT.value,
+    )
+    keywords_include = Column(Text, nullable=True)
+    keywords_exclude = Column(Text, nullable=True)
     last_notified_at = Column(TIMESTAMP, nullable=True)
     
     categories = relationship("UserCategory", back_populates="user", cascade="all, delete-orphan")
@@ -151,6 +159,7 @@ class Notification(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     job_id = Column(Integer, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
     channel = Column(String(20), nullable=True)
+    created_at = Column(TIMESTAMP, nullable=True, default=datetime.utcnow)
     sent_at = Column(TIMESTAMP, default=datetime.utcnow)
     status = Column(String(20), default=NotificationStatus.PENDING.value)
     error_message = Column(Text, nullable=True)

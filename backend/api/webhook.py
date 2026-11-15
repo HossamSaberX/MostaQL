@@ -14,6 +14,7 @@ from backend.config import settings
 from backend.database import get_db, User
 from backend.services.messages import BOT_COMMANDS, SERVICE_NAME, UNAUTHORIZED, home_url, manage_button
 from backend.services.notification_queue import send_telegram_message
+from backend.utils.security import read_telegram_link_code
 
 router = APIRouter()
 
@@ -60,7 +61,7 @@ async def telegram_webhook(
 ):
     """
     Webhook endpoint for Telegram bot updates.
-    Handles /start (link a user token to a chat), /help and /stop.
+    Handles /start (link a chat with a signed link code), /help and /stop.
     """
     secret = settings.telegram_webhook_secret
     if secret and not hmac.compare_digest(
@@ -107,8 +108,9 @@ async def telegram_webhook(
         return {"status": "ok"}
 
     if text.startswith("/start "):
-        token = text.split(" ", 1)[1].strip()
-        user = db.query(User).filter(User.token == token).first()
+        # Only the signed link code works here; the account token manages settings and must not.
+        user_id = read_telegram_link_code(text.split(" ", 1)[1].strip())
+        user = db.get(User, user_id) if user_id is not None else None
         
         if user:
             try:
@@ -140,7 +142,7 @@ async def telegram_webhook(
                 logger.error(f"Unexpected error linking chat_id {chat_id} to user {user.email}: {e}")
                 _reply(chat_id, "حدث خطأ غير متوقع. حاول مرة أخرى لاحقاً.")
         else:
-            _reply(chat_id, "الرمز غير صحيح. تأكد من الرابط وحاول مرة أخرى.")
-            logger.warning(f"Invalid link token from Telegram chat_id {chat_id}")
+            _reply(chat_id, "الرمز غير صحيح أو انتهت صلاحيته. افتح رابط الربط من الموقع مرة أخرى.")
+            logger.warning(f"Invalid link code from Telegram chat_id {chat_id}")
     
     return {"status": "ok"}

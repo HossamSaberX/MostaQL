@@ -121,6 +121,7 @@ def test_followed_client_matches_any_category_and_bypasses_category_filters(monk
     monkeypatch.setattr(notifier.email_task_queue, "enqueue", emails.append)
 
     result = notifier.process_new_jobs([job], category_id=2)
+    notifier.flush_notifications()
 
     assert result["notifications"] == 1
     assert session.query(Notification).count() == 1
@@ -202,6 +203,7 @@ def test_followed_client_matching_ignores_profile_subpages_and_host_casing(monke
     monkeypatch.setattr(notifier.email_task_queue, "enqueue", emails.append)
 
     result = notifier.process_new_jobs([session.query(Job).first()], category_id=1)
+    notifier.flush_notifications()
 
     assert result["notifications"] == 1
     assert len(emails) == 1

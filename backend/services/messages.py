@@ -7,6 +7,7 @@ phrase is written once. Digits are always Western (1, 2, 3).
 from typing import Any, Dict, List, Optional, Tuple
 
 from backend.config import settings
+from backend.utils.security import make_telegram_link_code
 
 SERVICE_NAME = "تنبيهات مستقل"
 ANNOUNCEMENT_TITLE = f"إعلان من {SERVICE_NAME}"
@@ -37,6 +38,11 @@ def _count(n: int, forms: Tuple[str, str, str, str]) -> str:
     if n == 2:
         return two
     return f"{n} {few if 3 <= n <= 10 else many}"
+
+
+def more_projects(n: int) -> str:
+    """The "and N more" line; number first, so it needs no Arabic counting form."""
+    return f"و{n} أخرى"
 
 
 def count_projects(n: int) -> str:
@@ -99,6 +105,11 @@ def home_url() -> str:
     return _site("/")
 
 
+def projects_url() -> str:
+    """Mostaql's project list, where "and N more" leads."""
+    return f"{settings.mostaql_base_url.rstrip('/')}/projects"
+
+
 def manage_url(token: str) -> str:
     """Page where the owner of this token manages or stops alerts."""
     return _site(f"/api/unsubscribe/{token}")
@@ -117,3 +128,10 @@ def unsubscribe_request_url() -> str:
 def manage_button(token: str) -> Tuple[str, str]:
     """(label, url) of the Telegram button under alerts."""
     return (f"⚙️ {MANAGE_ALERTS}", manage_url(token))
+
+
+def telegram_link_url(user_id: int) -> Optional[str]:
+    """Deep link that connects Telegram to this account; None when no bot is configured."""
+    if not settings.telegram_bot_username:
+        return None
+    return f"https://t.me/{settings.telegram_bot_username}?start={make_telegram_link_code(user_id)}"

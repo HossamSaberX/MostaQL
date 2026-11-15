@@ -19,7 +19,8 @@ MostaQL is a specialized job scraping and notification system designed to monito
 
 *   **Producer-Consumer Queue**: Implements a non-blocking custom Thread and Queue system. The scraper produces tasks while a background worker consumes them.
 *   **Dual-Channel Support**: Delivers notifications via Email (SMTP/Brevo) and Telegram (Bot API).
-*   **Smart Grouping**: Batches users with identical job sets for efficient processing while respecting individual `min_hiring_rate` filters.
+*   **One Message per Burst**: Matches are first recorded as `pending` notifications. After each poll cycle `flush_notifications()` sends one combined message per person and channel: Telegram every cycle (10 projects per message, 3 messages at most, then "and N more"); email as "within minutes" (first now, then one every 10 minutes), hourly or daily at 09:00 Cairo time. Past-client projects always go at the next cycle, and notifications older than their window plus 6 hours expire unsent.
+*   **Word Filters**: Optional "must mention one of" and "never mention" lists per user, matched against the project title (case, Arabic diacritics and letter variants ignored). Past-client projects skip them.
 *   **Duplicate-Safe Client Matching**: A project matching both a category subscription and a followed client creates one notification per channel, with the followed-client reason shown in the alert.
 *   **Graceful Lifecycle**: Uses a `Lifespan` context manager to ensure the queue finishes processing and worker threads exit cleanly during shutdown.
 

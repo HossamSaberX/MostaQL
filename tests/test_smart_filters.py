@@ -21,6 +21,8 @@ def make_user(**overrides):
         "min_budget_usd": None,
         "require_verified_client": False,
         "max_project_age_minutes": None,
+        "keywords_include": None,
+        "keywords_exclude": None,
     }
     values.update(overrides)
     return SimpleNamespace(**values)

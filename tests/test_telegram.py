@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy.orm import sessionmaker
@@ -14,6 +15,7 @@ from backend.services.notification_queue import (
     send_telegram_message,
 )
 from backend.services.notifier import render_telegram_alert
+from backend.utils.security import make_telegram_link_code
 
 MANAGE = ("⚙️ إدارة التنبيهات", "https://alerts.test/api/unsubscribe/tok")
 
@@ -50,7 +52,7 @@ def test_one_message_holds_a_short_alert_with_card_facts_and_reason():
 def test_long_alerts_split_between_projects_under_the_limit():
     jobs = [job(n) for n in range(1, 61)]
 
-    messages = render_telegram_alert(jobs)
+    messages = render_telegram_alert(jobs, per_message=1000, max_messages=1000)
 
     assert len(messages) > 1
     assert all(len(message) <= 4096 for message in messages)
@@ -62,6 +64,37 @@ def test_long_alerts_split_between_projects_under_the_limit():
         assert message.count("<b>") == message.count("</b>")
     assert messages[0].startswith("<b>60 مشروعًا جديدًا</b>")
     assert not messages[1].startswith("<b>60")
+
+
+def test_a_message_holds_ten_projects_and_three_messages_make_an_alert():
+    messages = render_telegram_alert([job(n, title=f"م{n}") for n in range(1, 36)])
+
+    assert len(messages) == 3
+    assert messages[0].startswith("<b>35 مشروعًا جديدًا</b>")
+    assert [message.count("https://mostaql.com/project/") for message in messages] == [10, 10, 10]
+    for message, numbers in zip(messages, (range(1, 11), range(11, 21), range(21, 31))):
+        assert all(f'project/{n}"' in message for n in numbers)
+    assert 'project/31"' not in "".join(messages)
+    assert messages[2].endswith('<a href="https://mostaql.com/projects">و5 أخرى</a>')
+    assert "أخرى" not in messages[0] + messages[1]
+
+
+def test_the_more_line_always_fits_and_counts_every_project_left_out():
+    long_title = "ع" * 300
+    jobs = [job(n, title=long_title, followed_client="أ" * 100) for n in range(1, 41)]
+
+    messages = render_telegram_alert(jobs)
+
+    assert len(messages) <= 3
+    assert all(len(message) <= 4096 for message in messages)
+    shown = sum(message.count("https://mostaql.com/project/") for message in messages)
+    assert messages[-1].endswith(f"و{40 - shown} أخرى</a>")
+
+
+def test_an_alert_that_fits_has_no_more_line():
+    (message,) = render_telegram_alert([job(n) for n in range(1, 4)])
+
+    assert "أخرى" not in message
 
 
 def test_past_client_projects_are_first_even_when_they_arrive_last():
@@ -304,7 +337,7 @@ def test_linking_turns_telegram_alerts_on_and_offers_the_manage_button(client, b
     db_session.add(User(id=1, email="me@example.com", token="tok", receive_telegram=False))
     db_session.commit()
 
-    client.post("/api/webhook/telegram", json=update("/start tok"))
+    client.post("/api/webhook/telegram", json=update(f"/start {make_telegram_link_code(1)}"))
 
     db_session.expire_all()
     user = db_session.get(User, 1)
@@ -321,7 +354,7 @@ def test_linking_a_paused_account_says_alerts_are_paused(client, bot, db_session
     db_session.add(User(id=1, email="me@example.com", token="tok", unsubscribed=True))
     db_session.commit()
 
-    client.post("/api/webhook/telegram", json=update("/start tok"))
+    client.post("/api/webhook/telegram", json=update(f"/start {make_telegram_link_code(1)}"))
 
     db_session.expire_all()
     assert db_session.get(User, 1).telegram_chat_id == "42"
@@ -331,7 +364,7 @@ def test_linking_a_paused_account_says_alerts_are_paused(client, bot, db_session
     assert buttons == [MANAGE]
 
 
-def test_linking_with_a_wrong_token_changes_nothing(client, bot, db_session):
+def test_linking_with_a_wrong_code_changes_nothing(client, bot, db_session):
     db_session.add(User(id=1, email="me@example.com", token="tok"))
     db_session.commit()
 
@@ -340,6 +373,32 @@ def test_linking_with_a_wrong_token_changes_nothing(client, bot, db_session):
     db_session.expire_all()
     assert db_session.get(User, 1).telegram_chat_id is None
     assert "الرمز غير صحيح" in bot[0][1]
+
+
+def test_the_management_token_no_longer_links_a_chat(client, bot, db_session):
+    db_session.add(User(id=1, email="me@example.com", token="tok"))
+    db_session.commit()
+
+    client.post("/api/webhook/telegram", json=update("/start tok"))
+
+    db_session.expire_all()
+    assert db_session.get(User, 1).telegram_chat_id is None
+    assert "الرمز غير صحيح" in bot[0][1]
+
+
+def test_an_expired_or_forged_link_code_changes_nothing(client, bot, db_session):
+    db_session.add(User(id=1, email="me@example.com", token="tok"))
+    db_session.commit()
+    week_ago = datetime.utcnow() - timedelta(days=8)
+    forged = make_telegram_link_code(1).replace("1_", "2_", 1)
+
+    client.post("/api/webhook/telegram", json=update(f"/start {make_telegram_link_code(1, now=week_ago)}"))
+    client.post("/api/webhook/telegram", json=update(f"/start {forged}"))
+
+    db_session.expire_all()
+    assert db_session.get(User, 1).telegram_chat_id is None
+    assert all("الرمز غير صحيح" in text for _chat, text, _buttons in bot)
+    assert len(bot) == 2
 
 
 def test_a_chat_linked_to_another_account_is_not_stolen(client, bot, db_session):
@@ -351,7 +410,7 @@ def test_a_chat_linked_to_another_account_is_not_stolen(client, bot, db_session)
     )
     db_session.commit()
 
-    client.post("/api/webhook/telegram", json=update("/start b"))
+    client.post("/api/webhook/telegram", json=update(f"/start {make_telegram_link_code(2)}"))
 
     db_session.expire_all()
     assert db_session.get(User, 1).telegram_chat_id == "42"
