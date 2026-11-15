@@ -16,7 +16,7 @@ linkEmailDelivery(form);
 const validate = validator([emailRule(email), channelsRule(form), categoriesRule(picker), ...numberRules(form)]);
 
 function showDone(data, settings) {
-  // Telegram-only signups still get an email (it holds the manage link), but Telegram is the next step.
+  // Telegram-only signups still get the confirmation email, but Telegram is the next step.
   const kind = !settings.receive_email && data.telegram_link ? 'telegram' : 'created';
 
   for (const block of done.querySelectorAll('[data-done]')) block.hidden = block.dataset.done !== kind;
