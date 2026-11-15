@@ -42,8 +42,8 @@ async def subscribe(
         raise HTTPException(status_code=500, detail=GENERIC_ERROR)
 
     user = result.user
-    if result.send_verification and result.token:
-        background_tasks.add_task(send_verification_email, user.email, result.token)
+    if result.send_verification:
+        background_tasks.add_task(send_verification_email, user.email, user.verify_token)
     if result.send_manage_link:
         background_tasks.add_task(send_unsubscribe_email, user.email, user.token)
 

@@ -146,16 +146,19 @@ def test_upgrade_expires_the_whole_old_pending_backlog_and_a_flush_sends_nothing
 
     inspector = inspect(engine)
     assert "created_at" in {column["name"] for column in inspector.get_columns("notifications")}
-    assert {"email_delivery", "keywords_include", "keywords_exclude", "telegram_link_nonce"} <= {
+    assert {"email_delivery", "keywords_include", "keywords_exclude", "telegram_link_nonce", "verify_token"} <= {
         column["name"] for column in inspector.get_columns("users")
     }
+    assert any(
+        index["column_names"] == ["verify_token"] and index["unique"] for index in inspector.get_indexes("users")
+    )
     with engine.connect() as connection:
         statuses = dict(connection.exec_driver_sql("SELECT id, status FROM notifications").all())
         user = connection.exec_driver_sql(
-            "SELECT email_delivery, keywords_include, keywords_exclude, telegram_link_nonce FROM users"
+            "SELECT email_delivery, keywords_include, keywords_exclude, telegram_link_nonce, verify_token FROM users"
         ).one()
     assert statuses == {1: "expired", 2: "expired", 3: "expired", 4: "sent", 5: "sent"}
-    assert tuple(user) == ("instant", None, None, None)
+    assert tuple(user) == ("instant", None, None, None, None)
 
     from sqlalchemy.orm import sessionmaker
 
@@ -209,4 +212,4 @@ def test_downgrade_removes_the_new_columns(tmp_path):
     inspector = inspect(create_engine(env["DATABASE_URL"]))
     assert "created_at" not in {column["name"] for column in inspector.get_columns("notifications")}
     user_columns = {column["name"] for column in inspector.get_columns("users")}
-    assert not {"email_delivery", "keywords_include", "keywords_exclude", "telegram_link_nonce"} & user_columns
+    assert not {"email_delivery", "keywords_include", "keywords_exclude", "telegram_link_nonce", "verify_token"} & user_columns

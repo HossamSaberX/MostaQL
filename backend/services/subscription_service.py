@@ -59,14 +59,24 @@ class SubscriptionResult:
     user: User
     message: str
     created: bool = False            # the account was created by this request
-    send_verification: bool = False  # send the confirmation link for `token`
+    send_verification: bool = False  # mail the confirmation link for `user.verify_token`
     send_manage_link: bool = False   # a confirmed or Telegram-linked account: mail its owner the manage link
-    token: Optional[str] = None
 
 
 def confirmation_expired(user: User) -> bool:
     """Whether the account's confirmation link is too old to use."""
     return is_token_expired(user.token_issued_at or user.created_at, settings.verification_token_expiry_hours)
+
+
+def prepare_confirmation(user: User) -> str:
+    """
+    The code for the confirmation email: the same one while its window is open, a new one with
+    a new window when it is missing or too old. Only the inbox ever receives it.
+    """
+    if not user.verify_token or confirmation_expired(user):
+        user.verify_token = generate_token()
+        user.token_issued_at = datetime.utcnow()
+    return user.verify_token
 
 
 def renew_token(user: User) -> None:
@@ -182,30 +192,19 @@ class SubscriptionService:
         if user.verified or user.telegram_chat_id:
             return SubscriptionResult(user=user, message=CHECK_INBOX, send_manage_link=True)
 
-        # Never confirmed: send the confirmation link again. Only when it is too old to work
-        # does the account get a new token, so the new email can be used.
-        if confirmation_expired(user):
-            renew_token(user)
-            self.db.commit()
-        return SubscriptionResult(user=user, message=CHECK_INBOX, send_verification=True, token=user.token)
+        # Never confirmed: send the confirmation link again (a new one only once it is too old).
+        prepare_confirmation(user)
+        self.db.commit()
+        return SubscriptionResult(user=user, message=CHECK_INBOX, send_verification=True)
 
     def _create_new_user(
         self, email: str, category_ids: List[int], cleaned: Dict[str, Any]
     ) -> SubscriptionResult:
-        token = generate_token()
-        user = User(
-            email=email,
-            token=token,
-            token_issued_at=datetime.utcnow(),
-            verified=False,
-            unsubscribed=False,
-            **cleaned,
-        )
+        user = User(email=email, token=generate_token(), verified=False, unsubscribed=False, **cleaned)
+        prepare_confirmation(user)
         self.db.add(user)
         self.db.flush()
         for category_id in category_ids:
             self.db.add(UserCategory(user_id=user.id, category_id=category_id))
         self.db.commit()
-        return SubscriptionResult(
-            user=user, message=CHECK_INBOX, created=True, send_verification=True, token=token
-        )
+        return SubscriptionResult(user=user, message=CHECK_INBOX, created=True, send_verification=True)

@@ -593,8 +593,10 @@ def test_a_chat_linked_before_confirmation_is_unlinked_when_the_owner_confirms(c
     start(client, stolen, chat_id=666)
     db_session.expire_all()
     old_token = db_session.query(User).filter_by(email="victim@example.com").one().token
-    assert old_token == mails[-1]
+    assert old_token != mails[-1]
     assert chat_of(db_session, 1) == "666"
+    # The manage button the linked chat got cannot confirm the address.
+    assert "الرابط استُخدم أو لم يعد صالحًا" in client.get(f"/api/verify/{old_token}").text
 
     page = client.get(f"/api/verify/{mails[-1]}").text
 

@@ -135,22 +135,38 @@ async def request_unsubscribe(
     return JSONResponse(content={"message": UNSUBSCRIBE_REQUEST_REPLY})
 
 
-@router.get("/verify/{token}")
-async def verify_email(token: str, request: Request, db: Session = Depends(get_db)):
+def _user_to_confirm(db: Session, code: str):
+    """The unconfirmed account this confirmation code belongs to, if any."""
+    user = db.query(User).filter(User.verify_token == code).first()
+    if user:
+        return user
+    # Emails sent before confirmation codes existed carry the account token, so it still confirms an account that never got a code and has no Telegram chat (which would have seen that token).
+    return (
+        db.query(User)
+        .filter(
+            User.token == code,
+            User.verified.isnot(True),
+            User.verify_token.is_(None),
+            User.telegram_chat_id.is_(None),
+        )
+        .first()
+    )
+
+
+@router.get("/verify/{code}")
+async def verify_email(code: str, request: Request, db: Session = Depends(get_db)):
     """
     Confirm an email address and show the result right here. The page is rendered on the
     server, so the account token never travels on to another address.
     """
     context: Dict[str, Any] = {"request": request, "title": "تأكيد البريد الإلكتروني"}
     try:
-        user = db.query(User).filter(User.token == token).first()
+        user = _user_to_confirm(db, code)
         if not user:
-            logger.warning(f"Verification failed: Invalid token {token[:10]}...")
+            logger.warning(f"Verification failed: unknown or used code {code[:10]}...")
             status = "invalid"
-        elif user.verified:
-            status = "already_verified"
         elif confirmation_expired(user):
-            logger.warning(f"Verification failed: Expired token for {user.email}")
+            logger.warning(f"Verification failed: Expired code for {user.email}")
             status = "expired"
         else:
             # Anyone could have signed this address up and linked their own Telegram chat, which
@@ -158,20 +174,19 @@ async def verify_email(token: str, request: Request, db: Session = Depends(get_d
             # (every earlier link and Telegram code stops working) and no chat from before.
             context["relink_telegram"] = bool(user.telegram_chat_id)
             user.verified = True
+            user.verify_token = None
             user.telegram_chat_id = None
             renew_token(user)
             db.commit()
             logger.info(f"User verified successfully: {user.email}")
             status = "success"
-
-        if status in ("success", "already_verified"):
             context["manage_link"] = manage_url(user.token)
             context["paused"] = bool(user.unsubscribed)
-        # Only right after confirming: a link scanner reopening the email must not replace it.
-        if status == "success" and (user.receive_telegram or context.get("relink_telegram")):
-            context["telegram_link"] = _telegram_link(db, user)
+            # Only right after confirming: a link scanner reopening the email must not replace it.
+            if user.receive_telegram or context["relink_telegram"]:
+                context["telegram_link"] = _telegram_link(db, user)
     except Exception as e:
-        logger.error(f"Verify error for token {token[:10]}...: {e}")
+        logger.error(f"Verify error for code {code[:10]}...: {e}")
         db.rollback()
         status = "error"
 

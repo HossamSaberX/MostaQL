@@ -329,7 +329,8 @@ def test_an_unconfirmed_account_is_not_changed_and_gets_its_confirmation_link_ag
     assert user.receive_email is True and user.min_budget_usd is None
     assert data["telegram_link"] is None
     assert data["message"] == first["message"]
-    assert tokens == [token, token]  # the same, still valid, confirmation link
+    assert tokens == [user.verify_token, user.verify_token]  # the same, still valid, confirmation link
+    assert token not in tokens  # the account token never goes in a confirmation email
 
 
 def test_an_unconfirmed_account_with_an_expired_link_gets_a_new_one(client, world, monkeypatch):
@@ -344,13 +345,33 @@ def test_an_unconfirmed_account_with_an_expired_link_gets_a_new_one(client, worl
 
     world.expire_all()
     user = world.get(User, 2)
-    assert user.token != "old" and tokens == [user.token]
-    assert user.telegram_link_nonce is None
+    assert user.token == "old" and tokens == [user.verify_token]
     assert [c.category_id for c in user.categories] == [1]
     assert data["telegram_link"] is None
-    assert client.get(f"/api/verify/{user.token}").status_code == 200
+    assert "تم تأكيد بريدك" in client.get(f"/api/verify/{user.verify_token}").text
     world.expire_all()
     assert world.get(User, 2).verified is True
+
+
+def test_a_resent_confirmation_keeps_its_code_while_open_and_gets_a_new_one_after(client, world, monkeypatch):
+    codes = []
+    monkeypatch.setattr(subscribe, "send_verification_email", lambda email, code: codes.append(code))
+    body = {"email": "new@example.com", "category_ids": [2]}
+    client.post("/api/subscribe", json=body)
+    client.post("/api/subscribe", json=body)
+    assert codes[0] == codes[1]
+
+    user = world.query(User).filter_by(email="new@example.com").one()
+    user.token_issued_at = datetime.utcnow() - timedelta(hours=settings.verification_token_expiry_hours + 1)
+    world.commit()
+    assert "انتهت صلاحية الرابط" in client.get(f"/api/verify/{codes[0]}").text
+    client.post("/api/subscribe", json=body)
+
+    world.expire_all()
+    user = world.query(User).filter_by(email="new@example.com").one()
+    assert codes[2] != codes[0] and codes[2] == user.verify_token
+    assert "الرابط استُخدم أو لم يعد صالحًا" in client.get(f"/api/verify/{codes[0]}").text
+    assert "تم تأكيد بريدك" in client.get(f"/api/verify/{codes[2]}").text
 
 
 def test_subscribe_errors_are_arabic(client, world):
@@ -452,20 +473,64 @@ def test_confirming_without_telegram_just_closes_the_old_link(client, world):
     assert "t.me" not in page
 
 
-@pytest.mark.parametrize("paused, words", [(False, "التنبيهات تعمل"), (True, "التنبيهات متوقفة")])
-def test_an_already_confirmed_link_shows_the_real_state_and_no_new_telegram_link(client, world, paused, words):
+def test_a_confirmed_accounts_token_on_the_confirmation_link_changes_nothing(client, world):
     user = reload_user(world)
-    user.unsubscribed = paused
     user.telegram_link_nonce = "open-nonce"
     world.commit()
 
     page = client.get("/api/verify/tok").text
 
-    assert words in page
-    assert "t.me" not in page
-    assert "/api/unsubscribe/tok" in page
+    assert "الرابط استُخدم أو لم يعد صالحًا" in page
+    assert "t.me" not in page and "/api/unsubscribe/tok" not in page
     world.rollback()
     assert world.get(User, 1).telegram_link_nonce == "open-nonce"  # a scanner reopening it changes nothing
+
+
+def test_only_the_emailed_code_confirms_a_new_account_and_only_once(client, world, monkeypatch):
+    codes = []
+    monkeypatch.setattr(subscribe, "send_verification_email", lambda email, code: codes.append(code))
+    client.post("/api/subscribe", json={"email": "new@example.com", "category_ids": [2]})
+    user = world.query(User).filter_by(email="new@example.com").one()
+    manage_token = user.token  # what the Telegram manage button carries
+    assert codes == [user.verify_token] and manage_token not in codes
+
+    page = client.get(f"/api/verify/{manage_token}").text
+    world.expire_all()
+    assert "الرابط استُخدم أو لم يعد صالحًا" in page
+    assert world.query(User).filter_by(email="new@example.com").one().verified is False
+
+    assert "تم تأكيد بريدك" in client.get(f"/api/verify/{codes[0]}").text
+    world.expire_all()
+    user = world.query(User).filter_by(email="new@example.com").one()
+    assert user.verified is True and user.verify_token is None
+
+    page = client.get(f"/api/verify/{codes[0]}").text
+    assert "الرابط استُخدم أو لم يعد صالحًا" in page and "تم تأكيد بريدك" not in page
+
+
+def test_an_old_confirmation_email_still_works_but_not_once_a_chat_is_linked(client, world):
+    # Accounts from before confirmation codes: their emailed link carries the account token.
+    world.add(User(id=2, email="legacy@example.com", token="legacy", verified=False, token_issued_at=datetime.utcnow()))
+    world.add(User(id=3, email="linked@example.com", token="linked", verified=False, telegram_chat_id="666",
+                   token_issued_at=datetime.utcnow()))
+    world.commit()
+
+    assert "تم تأكيد بريدك" in client.get("/api/verify/legacy").text
+    assert "الرابط استُخدم أو لم يعد صالحًا" in client.get("/api/verify/linked").text
+    world.expire_all()
+    assert world.get(User, 2).verified is True
+    assert world.get(User, 3).verified is False and world.get(User, 3).telegram_chat_id == "666"
+
+
+def test_the_confirmation_code_is_never_in_api_responses(client, world):
+    data = client.post("/api/subscribe", json={"email": "new@example.com", "category_ids": [2]}).text
+    user = world.query(User).filter_by(email="new@example.com").one()
+    prefs = client.get(f"/api/preferences/{user.token}").text
+    saved = client.post("/api/preferences", json={"token": user.token, "category_ids": [3]}).text
+
+    assert user.verify_token
+    for body in (data, prefs, saved):
+        assert user.verify_token not in body and "verify_token" not in body
 
 
 # ---- disconnecting Telegram ----------------------------------------------------------------

@@ -25,7 +25,8 @@ class User(Base):
     verified = Column(Boolean, default=False)
     token = Column(String(255), unique=True, nullable=False)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
-    token_issued_at = Column(TIMESTAMP, default=datetime.utcnow)
+    token_issued_at = Column(TIMESTAMP, default=datetime.utcnow)  # when the confirmation window opened
+    verify_token = Column(String(64), nullable=True, unique=True, index=True)  # only in the confirmation email; cleared once used
     unsubscribed = Column(Boolean, default=False)
     receive_email = Column(Boolean, default=True)
     receive_telegram = Column(Boolean, default=True)

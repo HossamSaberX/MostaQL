@@ -7,7 +7,8 @@ Create Date: 2026-11-15 00:00:00.000000
 Alerts are now recorded as `pending` rows and sent in batches. Every `pending` row that
 exists today is a leftover of the old send-at-once flow (some even have no channel), so they
 are all marked `expired` and never sent. Adding columns is the only schema change;
-`telegram_link_nonce` makes each Telegram link work once.
+`telegram_link_nonce` makes each Telegram link work once, and `verify_token` is the code that
+only the confirmation email carries.
 """
 from typing import Sequence, Union
 
@@ -37,6 +38,8 @@ def upgrade() -> None:
         batch_op.add_column(sa.Column("keywords_include", sa.Text(), nullable=True))
         batch_op.add_column(sa.Column("keywords_exclude", sa.Text(), nullable=True))
         batch_op.add_column(sa.Column("telegram_link_nonce", sa.String(length=32), nullable=True))
+        batch_op.add_column(sa.Column("verify_token", sa.String(length=64), nullable=True))
+        batch_op.create_index("ix_users_verify_token", ["verify_token"], unique=True)
 
     op.execute("UPDATE notifications SET status = 'expired' WHERE status = 'pending'")
 
@@ -44,6 +47,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     # Rows expired by the upgrade stay expired: they were never going to be sent.
     with op.batch_alter_table("users") as batch_op:
+        batch_op.drop_index("ix_users_verify_token")
+        batch_op.drop_column("verify_token")
         batch_op.drop_column("telegram_link_nonce")
         batch_op.drop_column("keywords_exclude")
         batch_op.drop_column("keywords_include")
