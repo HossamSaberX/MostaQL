@@ -252,15 +252,17 @@ class BaseTaskQueue(ABC, Generic[T]):
 
     def _still_wanted(self, task: T) -> bool:
         """Checked right before sending: the person may have stopped alerts since the flush."""
-        db = SessionLocal()
+        db = None
         try:
+            db = SessionLocal()
             user = db.get(User, task.user_ids[0]) if task.user_ids else None
             return bool(user) and self._goes_to(user, task)
         except Exception as exc:
-            app_logger.error(f"Could not recheck the recipient, sending anyway: {exc}")
-            return True
+            app_logger.error(f"Could not recheck the recipient, holding the message: {exc}")
+            return False
         finally:
-            db.close()
+            if db is not None:
+                db.close()
 
     def _update_notification_status(
         self,

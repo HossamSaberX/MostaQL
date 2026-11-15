@@ -681,3 +681,13 @@ def test_stop_unlinks_the_chat(client, bot, db_session):
     db_session.expire_all()
     assert db_session.get(User, 1).telegram_chat_id is None
     assert "تم فصل" in bot[0][1]
+
+
+def test_a_message_is_held_when_the_recipient_cannot_be_rechecked(monkeypatch):
+    def broken_session():
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(notification_queue, "SessionLocal", broken_session)
+    task = notification_queue.TelegramTask(notification_ids=[1], user_ids=[1], chat_id="1", texts=["x"])
+
+    assert notification_queue.telegram_task_queue._still_wanted(task) is False

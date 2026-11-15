@@ -189,7 +189,7 @@ class SubscriptionService:
 
     def _handle_existing_user(self, user: User) -> SubscriptionResult:
         # Anyone can type any address, so an existing account is never changed from here.
-        if user.verified or user.telegram_chat_id:
+        if user.verified:
             return SubscriptionResult(user=user, message=CHECK_INBOX, send_manage_link=True)
 
         # Never confirmed: send the confirmation link again (a new one only once it is too old).

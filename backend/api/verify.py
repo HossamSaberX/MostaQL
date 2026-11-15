@@ -137,20 +137,7 @@ async def request_unsubscribe(
 
 def _user_to_confirm(db: Session, code: str):
     """The unconfirmed account this confirmation code belongs to, if any."""
-    user = db.query(User).filter(User.verify_token == code).first()
-    if user:
-        return user
-    # Emails sent before confirmation codes existed carry the account token, so it still confirms an account that never got a code and has no Telegram chat (which would have seen that token).
-    return (
-        db.query(User)
-        .filter(
-            User.token == code,
-            User.verified.isnot(True),
-            User.verify_token.is_(None),
-            User.telegram_chat_id.is_(None),
-        )
-        .first()
-    )
+    return db.query(User).filter(User.verify_token == code).first()
 
 
 @router.get("/verify/{code}")

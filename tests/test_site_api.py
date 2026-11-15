@@ -293,7 +293,7 @@ def test_a_confirmed_account_without_telegram_gets_no_link(client, world):
     assert response.json()["telegram_link"] is None
 
 
-def test_a_telegram_only_account_is_not_changed_either(client, world, bot_and_no_mail):
+def test_a_telegram_only_account_is_not_changed_and_gets_its_confirmation_again(client, world, bot_and_no_mail):
     client.post("/api/subscribe", json={"email": "new@example.com", "category_ids": [2]})
     user = world.query(User).filter_by(email="new@example.com").one()
     user.telegram_chat_id = "555"
@@ -307,7 +307,7 @@ def test_a_telegram_only_account_is_not_changed_either(client, world, bot_and_no
     assert user.token == token
     assert [c.category_id for c in user.categories] == [2]
     assert data["telegram_link"] is None
-    assert bot_and_no_mail[-1] == ("manage", "new@example.com")
+    assert bot_and_no_mail[-1] == "new@example.com"  # its confirmation email, again
 
 
 def test_an_unconfirmed_account_is_not_changed_and_gets_its_confirmation_link_again(client, world, monkeypatch):
@@ -385,10 +385,10 @@ def test_subscribe_errors_are_arabic(client, world):
 
 
 def test_confirming_shows_the_result_without_moving_the_token_on(client, world):
-    world.add(User(id=2, email="new@example.com", token="fresh", verified=False, token_issued_at=datetime.utcnow()))
+    world.add(User(id=2, email="new@example.com", token="fresh", verify_token="code", verified=False, token_issued_at=datetime.utcnow()))
     world.commit()
 
-    response = client.get("/api/verify/fresh", follow_redirects=False)
+    response = client.get("/api/verify/code", follow_redirects=False)
 
     assert response.status_code == 200
     assert "location" not in response.headers
@@ -400,7 +400,7 @@ def test_confirming_shows_the_result_without_moving_the_token_on(client, world):
 
 
 def test_an_expired_confirmation_link_offers_a_new_one(client, world):
-    world.add(User(id=2, email="old@example.com", token="old", verified=False,
+    world.add(User(id=2, email="old@example.com", token="old", verify_token="old", verified=False,
                    token_issued_at=datetime.utcnow() - timedelta(hours=settings.verification_token_expiry_hours + 1)))
     world.commit()
 
@@ -420,11 +420,11 @@ def test_an_unknown_confirmation_link_says_so(client, world):
 
 
 def test_confirming_gives_the_account_a_new_token_and_no_relink_note(client, world):
-    world.add(User(id=2, email="new@example.com", token="fresh", verified=False, receive_telegram=False,
+    world.add(User(id=2, email="new@example.com", token="fresh", verify_token="code", verified=False, receive_telegram=False,
                    token_issued_at=datetime.utcnow()))
     world.commit()
 
-    page = client.get("/api/verify/fresh").text
+    page = client.get("/api/verify/code").text
 
     world.expire_all()
     user = world.get(User, 2)
@@ -437,22 +437,22 @@ def test_confirming_gives_the_account_a_new_token_and_no_relink_note(client, wor
 
 
 def test_a_second_click_on_a_confirmation_link_says_it_was_used(client, world):
-    world.add(User(id=2, email="new@example.com", token="fresh", verified=False, token_issued_at=datetime.utcnow()))
+    world.add(User(id=2, email="new@example.com", token="fresh", verify_token="code", verified=False, token_issued_at=datetime.utcnow()))
     world.commit()
-    client.get("/api/verify/fresh")
+    client.get("/api/verify/code")
 
-    page = client.get("/api/verify/fresh").text
+    page = client.get("/api/verify/code").text
 
     assert "الرابط استُخدم أو لم يعد صالحًا" in page
     assert "تم تأكيد بريدك" not in page
 
 
 def test_confirming_closes_an_older_telegram_link_and_opens_a_new_one(client, world):
-    world.add(User(id=2, email="new@example.com", token="fresh", verified=False,
+    world.add(User(id=2, email="new@example.com", token="fresh", verify_token="code", verified=False,
                    token_issued_at=datetime.utcnow(), telegram_link_nonce="old-nonce"))
     world.commit()
 
-    page = client.get("/api/verify/fresh").text
+    page = client.get("/api/verify/code").text
 
     world.rollback()
     nonce = world.get(User, 2).telegram_link_nonce
@@ -462,11 +462,11 @@ def test_confirming_closes_an_older_telegram_link_and_opens_a_new_one(client, wo
 
 
 def test_confirming_without_telegram_just_closes_the_old_link(client, world):
-    world.add(User(id=2, email="new@example.com", token="fresh", verified=False, receive_telegram=False,
+    world.add(User(id=2, email="new@example.com", token="fresh", verify_token="code", verified=False, receive_telegram=False,
                    token_issued_at=datetime.utcnow(), telegram_link_nonce="old-nonce"))
     world.commit()
 
-    page = client.get("/api/verify/fresh").text
+    page = client.get("/api/verify/code").text
 
     world.rollback()
     assert world.get(User, 2).telegram_link_nonce is None
@@ -508,18 +508,15 @@ def test_only_the_emailed_code_confirms_a_new_account_and_only_once(client, worl
     assert "الرابط استُخدم أو لم يعد صالحًا" in page and "تم تأكيد بريدك" not in page
 
 
-def test_an_old_confirmation_email_still_works_but_not_once_a_chat_is_linked(client, world):
-    # Accounts from before confirmation codes: their emailed link carries the account token.
-    world.add(User(id=2, email="legacy@example.com", token="legacy", verified=False, token_issued_at=datetime.utcnow()))
-    world.add(User(id=3, email="linked@example.com", token="linked", verified=False, telegram_chat_id="666",
-                   token_issued_at=datetime.utcnow()))
+def test_the_account_token_never_confirms_an_email(client, world):
+    # Only the code in the confirmation email confirms; the account token (seen on manage links
+    # and Telegram buttons) does not, even for an account that never got a code.
+    world.add(User(id=2, email="old@example.com", token="old", verified=False, token_issued_at=datetime.utcnow()))
     world.commit()
 
-    assert "تم تأكيد بريدك" in client.get("/api/verify/legacy").text
-    assert "الرابط استُخدم أو لم يعد صالحًا" in client.get("/api/verify/linked").text
+    assert "الرابط استُخدم أو لم يعد صالحًا" in client.get("/api/verify/old").text
     world.expire_all()
-    assert world.get(User, 2).verified is True
-    assert world.get(User, 3).verified is False and world.get(User, 3).telegram_chat_id == "666"
+    assert world.get(User, 2).verified is False
 
 
 def test_the_confirmation_code_is_never_in_api_responses(client, world):
