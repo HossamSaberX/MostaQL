@@ -2,7 +2,7 @@
 Email service module with Strategy Pattern implementation.
 Provides a unified interface for multiple email providers.
 """
-from typing import List, Dict
+from typing import Any, Dict, List, Optional
 import threading
 
 from backend.config import settings
@@ -64,24 +64,24 @@ def send_verification_email(email: str, token: str) -> bool:
 
 
 def send_job_notifications(
-    email: str, 
-    category_name: str, 
-    jobs: List[Dict[str, str]], 
-    unsubscribe_token: str = None,
-    bcc: List[str] = None
+    email: str,
+    jobs: List[Dict[str, Any]],
+    unsubscribe_token: Optional[str] = None,
+    more_count: int = 0,
+    more_url: Optional[str] = None,
 ) -> bool:
     """
-    Send job notifications using the configured provider.
+    Send one alert email using the configured provider.
     If EMAIL_PROVIDER=alternate, will try the other provider if first fails.
     """
     service = get_email_service()
-    success = service.send_job_notifications(email, category_name, jobs, unsubscribe_token, bcc)
+    success = service.send_job_notifications(email, jobs, unsubscribe_token, more_count, more_url)
     
     if not success and getattr(settings, 'email_provider', '').lower() == 'alternate':
         from backend.utils.logger import app_logger
         app_logger.info("First provider failed for job notifications, trying alternate...")
         alternate_service = BrevoEmailService() if isinstance(service, GmailEmailService) else GmailEmailService()
-        return alternate_service.send_job_notifications(email, category_name, jobs, unsubscribe_token, bcc)
+        return alternate_service.send_job_notifications(email, jobs, unsubscribe_token, more_count, more_url)
     
     return success
 

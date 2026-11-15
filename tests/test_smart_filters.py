@@ -4,12 +4,12 @@ from types import SimpleNamespace
 import pytest
 
 from backend.models import SubscribeRequest
-from backend.services.email.templates import get_job_notifications_html
+from backend.services.email.templates import render_alert_email
 from backend.services.notifier import (
     _build_job_payload,
     _filter_jobs_for_user,
     _job_matches_user,
-    _telegram_job_html,
+    render_telegram_alert,
 )
 
 
@@ -122,20 +122,18 @@ def test_request_defaults_are_backward_compatible_and_validation_is_strict():
 
 
 def test_notification_payload_and_email_explain_why_the_job_matched():
-    payload = _build_job_payload(make_job(), NOW)
-    html = get_job_notifications_html(
-        "برمجة",
-        [payload],
-        "https://example.com/unsubscribe",
-    )
+    payload = _build_job_payload(make_job(), NOW, category_name="برمجة")
+    _subject, html, text = render_alert_email([payload], token="tok")
 
     assert payload["budget"] == "$100 - $250"
     assert payload["project_age_minutes"] == 5
-    assert "مشاريع قيد التنفيذ" in html
-    assert "التواصلات الجارية" in html
+    for part in (html, text):
+        assert "مشاريع قيد التنفيذ" in part
+        assert "التواصلات الجارية" in part
+        assert "تصنيف تتابعه: برمجة" in part
     assert "راجع المشروع وتقدّم الآن" in html
 
-    telegram_html = _telegram_job_html(payload)
+    (telegram_html,) = render_telegram_alert([payload])
     assert "الميزانية" in telegram_html
     assert "التوثيق" in telegram_html
     assert "عمر المشروع" in telegram_html

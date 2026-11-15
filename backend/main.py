@@ -2,6 +2,7 @@
 FastAPI application entry point
 """
 import os
+from threading import Thread
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,10 +11,8 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
 from fastapi.exceptions import RequestValidationError
-from fastapi.exception_handlers import (
-    request_validation_exception_handler,
-    http_exception_handler,
-)
+from fastapi.encoders import jsonable_encoder
+from fastapi.exception_handlers import http_exception_handler
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.templating import Jinja2Templates
 
@@ -22,7 +21,12 @@ from backend.utils.logger import app_logger
 from backend.scheduler import start_scheduler, shutdown_scheduler
 from backend.api import subscribe, verify, health, test, webhook, seo, broadcast
 from backend.utils.limiter import limiter
-from backend.services.notification_queue import email_task_queue, telegram_task_queue
+from backend.services.notification_queue import (
+    email_task_queue,
+    telegram_task_queue,
+    register_bot_commands,
+)
+from backend.services.messages import GENERIC_ERROR, SERVICE_NAME
 from backend.config import settings
 from alembic.config import Config
 from alembic import command
@@ -52,6 +56,10 @@ async def lifespan(app: FastAPI):
     app_logger.info("Initializing database...")
     init_db()
     
+    if settings.telegram_bot_token:
+        # Off the startup path: a slow Telegram must not delay the app.
+        Thread(target=register_bot_commands, name="telegram-bot-commands", daemon=True).start()
+
     app_logger.info("Starting scheduler...")
     global scheduler
     scheduler = start_scheduler()
@@ -72,7 +80,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Mostaql Job Notifier",
+    title=SERVICE_NAME,
     description="Automated job notification service for Mostaql freelancers",
     version="1.0.0",
     lifespan=lifespan,
@@ -128,7 +136,7 @@ async def landing_page(request: Request):
         "subscribe.html",
         {
             "request": request, 
-            "title": "تنبيهات وظائف مستقل",
+            "title": SERVICE_NAME,
             "telegram_bot_username": settings.telegram_bot_username
         }
     )
@@ -171,7 +179,7 @@ async def unsubscribe_request_page(request: Request):
 async def root():
     """Root endpoint"""
     return {
-        "service": "Mostaql Job Notifier",
+        "service": SERVICE_NAME,
         "status": "running",
         "version": "1.0.0",
         "docs": "/docs"
@@ -182,7 +190,10 @@ async def root():
 async def validation_error_handler(request: Request, exc: RequestValidationError):
     """Return consistent JSON for request validation errors"""
     app_logger.warning(f"Validation error on {request.url.path}: {exc.errors()}")
-    return await request_validation_exception_handler(request, exc)
+    return JSONResponse(
+        status_code=422,
+        content={"detail": "تحقق من البيانات المدخلة", "errors": jsonable_encoder(exc.errors())},
+    )
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -198,7 +209,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     app_logger.error(f"Unhandled exception on {request.url.path}: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": "حدث خطأ غير متوقع، يرجى المحاولة لاحقاً"}
+        content={"detail": GENERIC_ERROR}
     )
 
 

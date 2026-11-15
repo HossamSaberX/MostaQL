@@ -19,7 +19,16 @@ from backend.database import (
 from backend.enums import NotificationChannel, NotificationStatus
 from backend.services.notification_queue import EmailTask, TelegramTask, email_task_queue, telegram_task_queue
 from backend.services.client_tracking import client_profile_key
-from backend.config import settings
+from backend.services.messages import (
+    count_projects,
+    job_facts,
+    job_reason,
+    manage_button,
+    order_jobs,
+)
+
+TELEGRAM_MESSAGE_LIMIT = 4096
+TELEGRAM_TITLE_LENGTH = 300
 
 
 def _get_users_for_category(category_id: int, db) -> List[User]:
@@ -43,63 +52,6 @@ def _get_users_for_category(category_id: int, db) -> List[User]:
             .distinct()
             .all()
     )
-
-
-def _build_email_tasks(
-    users: List[User],
-    category_name: str,
-    jobs: List[Job],
-    notification_rows: Dict[int, List[int]],
-    payloads_by_user: Optional[Dict[int, List[Dict[str, Any]]]] = None,
-    category_names_by_user: Optional[Dict[int, str]] = None,
-) -> List[EmailTask]:
-    common_payloads = [_build_job_payload(job) for job in jobs]
-    tasks: List[EmailTask] = []
-    
-    active_users = [user for user in users if user.id in notification_rows]
-    total_active = len(active_users)
-    if total_active == 0:
-        return tasks
-
-    # A followed-client match can add a per-user explanation to the payload.
-    # Group only users with identical payloads so BCC delivery never exposes a
-    # different client's label to another recipient.
-    groups: Dict[Tuple[str, Tuple[Tuple[str, Optional[str]], ...]], List[User]] = {}
-    for user in active_users:
-        user_payloads = (payloads_by_user or {}).get(user.id, common_payloads)
-        user_category_name = (category_names_by_user or {}).get(user.id, category_name)
-        signature = tuple(
-            (str(payload.get("url", "")), payload.get("followed_client"))
-            for payload in user_payloads
-        )
-        groups.setdefault((user_category_name, signature), []).append(user)
-
-    configured_batch = getattr(settings, "email_bcc_batch_size", 0)
-    for (user_category_name, _signature), grouped_users in groups.items():
-        batch_size = len(grouped_users) if configured_batch <= 0 else min(configured_batch, len(grouped_users))
-        user_payloads = (payloads_by_user or {}).get(grouped_users[0].id, common_payloads)
-
-        for start in range(0, len(grouped_users), batch_size):
-            batch_users = grouped_users[start:start + batch_size]
-            bcc_emails = [user.email for user in batch_users]
-            batch_notification_ids = []
-            batch_user_ids = [user.id for user in batch_users]
-            for user in batch_users:
-                batch_notification_ids.extend(notification_rows.get(user.id, []))
-
-            tasks.append(
-                EmailTask(
-                    notification_ids=batch_notification_ids,
-                    user_ids=batch_user_ids,
-                    email="undisclosed-recipients:;",
-                    category_name=user_category_name,
-                    jobs=user_payloads,
-                    unsubscribe_token=None,
-                    bcc=bcc_emails,
-                )
-            )
-        
-    return tasks
 
 
 def _project_age_minutes(job: Job, now: Optional[datetime] = None) -> Optional[int]:
@@ -216,6 +168,7 @@ def _build_job_payload(
     job: Job,
     now: Optional[datetime] = None,
     followed_client: Optional[str] = None,
+    category_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     min_budget = _format_amount(job.budget_min_usd)
     max_budget = _format_amount(job.budget_max_usd)
@@ -235,31 +188,43 @@ def _build_job_payload(
     }
     if followed_client:
         payload["followed_client"] = followed_client
+    if category_name:
+        payload["category"] = category_name
     return payload
 
 
-def _telegram_job_html(payload: Dict[str, Any]) -> str:
-    signal_lines = []
-    if payload.get("followed_client"):
-        signal_lines.append(
-            f"تنبيه عميل تتابعه: {escape(str(payload['followed_client']))}"
-        )
-    if payload.get("budget"):
-        signal_lines.append(f"الميزانية: {escape(str(payload['budget']))}")
-    if payload.get("hiring_rate"):
-        signal_lines.append(f"معدل التوظيف: {escape(str(payload['hiring_rate']))}")
-    if payload.get("projects_in_progress") is not None:
-        signal_lines.append(f"مشاريع قيد التنفيذ: {payload['projects_in_progress']}")
-    if payload.get("ongoing_communications") is not None:
-        signal_lines.append(f"التواصلات الجارية: {payload['ongoing_communications']}")
-    signal_lines.append(f"التوثيق: {escape(str(payload['verification']))}")
-    if payload.get("project_age_minutes") is not None:
-        signal_lines.append(f"عمر المشروع: {payload['project_age_minutes']} دقيقة")
-
-    signals = "\n".join(f"\u200F  {line}" for line in signal_lines)
+def _telegram_project(payload: Dict[str, Any]) -> str:
+    title = escape(str(payload["title"])[:TELEGRAM_TITLE_LENGTH])
     link = escape(str(payload["url"]), quote=True)
-    title = escape(str(payload["title"]))
-    return f"\u200F• <b>{title}</b>\n{signals}\n\u200F<a href=\"{link}\">راجع المشروع وتقدّم الآن</a>"
+    lines = [f'\u200F<b><a href="{link}">{title}</a></b>']
+    lines += [f"{escape(label)}: {escape(value)}" for label, value in job_facts(payload)]
+    reason = job_reason(payload)
+    if reason:
+        lines.append(f"<i>{escape(reason)}</i>")
+    return "\n".join(lines)
+
+
+def render_telegram_alert(jobs: List[Dict[str, Any]]) -> List[str]:
+    """
+    One person's alert as Telegram HTML messages, each under 4096 characters.
+
+    Projects from past clients come first; a project is never split between messages.
+    """
+    ordered = order_jobs(jobs)
+    if not ordered:
+        return []
+
+    messages: List[str] = []
+    current = f"<b>{count_projects(len(ordered))}</b>"
+    for payload in ordered:
+        block = _telegram_project(payload)
+        if len(current) + 2 + len(block) > TELEGRAM_MESSAGE_LIMIT:
+            messages.append(current)
+            current = block
+        else:
+            current = f"{current}\n\n{block}"
+    messages.append(current)
+    return messages
 
 
 def _create_notification(
@@ -284,6 +249,7 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
 
     db = SessionLocal()
     queued_notifications = 0
+    queued_emails = 0
     queued_telegram = 0
     matched_user_jobs = 0
     try:
@@ -324,108 +290,61 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
         email_notification_rows: Dict[int, List[int]] = {}
         telegram_notification_rows: Dict[int, List[int]] = {}
         for user_id, notif in pending_notifications:
-            if notif.channel == NotificationChannel.EMAIL.value:
-                email_notification_rows.setdefault(user_id, []).append(notif.id)
-            else:
-                telegram_notification_rows.setdefault(user_id, []).append(notif.id)
+            rows = (
+                email_notification_rows
+                if notif.channel == NotificationChannel.EMAIL.value
+                else telegram_notification_rows
+            )
+            rows.setdefault(user_id, []).append(notif.id)
         
         queued_notifications = len(pending_notifications)
         db.commit()
 
-        category_name_escaped = escape(category.name)
         for user in users:
             if user.id not in user_job_map:
                 continue
-            
-            if user.receive_telegram and user.telegram_chat_id:
-                user_jobs = user_job_map[user.id]
-                reasons = user_job_reasons.get(user.id, {})
-                job_payloads = [
-                    _build_job_payload(job, followed_client=reasons.get(job.id))
-                    for job in user_jobs
-                ]
+            payloads = [
+                _build_job_payload(
+                    job,
+                    followed_client=user_job_reasons[user.id].get(job.id),
+                    category_name=category.name,
+                )
+                for job in user_job_map[user.id]
+            ]
 
-                msg_content = "\n\n".join(
-                    _telegram_job_html(payload) for payload in job_payloads
-                )
-                has_followed_client = any(
-                    reasons.get(job.id) for job in user_jobs
-                )
-                title = (
-                    "\u200Fمشاريع جديدة من عميل تتابعه"
-                    if has_followed_client
-                    else f"\u200Fوظائف جديدة في {category_name_escaped}"
-                )
-                
-                user_notification_ids = telegram_notification_rows.get(user.id, [])
-                if user_notification_ids:
-                    telegram_task_queue.enqueue(
-                        TelegramTask(
-                            notification_ids=user_notification_ids,
-                            user_ids=[user.id],
-                            chat_id=user.telegram_chat_id,
-                            title=title,
-                            content=msg_content,
-                        )
+            telegram_ids = telegram_notification_rows.get(user.id)
+            if telegram_ids:
+                telegram_task_queue.enqueue(
+                    TelegramTask(
+                        notification_ids=telegram_ids,
+                        user_ids=[user.id],
+                        chat_id=user.telegram_chat_id,
+                        texts=render_telegram_alert(payloads),
+                        buttons=[manage_button(user.token)],
                     )
-                    queued_telegram += 1
-
-        tasks = []
-        job_set_users: Dict[Tuple[int, ...], List[User]] = {}
-        
-        for user in users:
-            if user.id not in user_job_map:
-                continue
-            if not user.receive_email:
-                continue
-            if not user.verified:
-                continue
-                
-            job_ids = tuple(sorted(j.id for j in user_job_map[user.id]))
-            job_set_users.setdefault(job_ids, []).append(user)
-            
-        job_map = {j.id: j for j in new_jobs}
-        
-        for job_ids, batch_users in job_set_users.items():
-            batch_jobs = [job_map[jid] for jid in job_ids]
-            payloads_by_user = {
-                user.id: [
-                    _build_job_payload(
-                        job,
-                        followed_client=user_job_reasons.get(user.id, {}).get(job.id),
-                    )
-                    for job in user_job_map[user.id]
-                ]
-                for user in batch_users
-            }
-            category_names_by_user = {
-                user.id: (
-                    f"{category.name} — عميل تتابعه"
-                    if any(user_job_reasons.get(user.id, {}).values())
-                    else category.name
                 )
-                for user in batch_users
-            }
-            batch_tasks = _build_email_tasks(
-                batch_users,
-                category.name,
-                batch_jobs,
-                email_notification_rows,
-                payloads_by_user=payloads_by_user,
-                category_names_by_user=category_names_by_user,
-            )
-            tasks.extend(batch_tasks)
+                queued_telegram += 1
 
-        for task in tasks:
-            email_task_queue.enqueue(task)
+            email_ids = email_notification_rows.get(user.id)
+            if email_ids:
+                email_task_queue.enqueue(
+                    EmailTask(
+                        notification_ids=email_ids,
+                        user_ids=[user.id],
+                        email=user.email,
+                        jobs=payloads,
+                        unsubscribe_token=user.token,
+                    )
+                )
+                queued_emails += 1
 
         logger.info(
             f"Evaluated {len(new_jobs)} new jobs for {len(users)} eligible users: "
             f"{matched_user_jobs} matching user-project pairs. "
-            f"Queued {len(tasks)} emails, {queued_telegram} Telegram messages "
+            f"Queued {queued_emails} emails, {queued_telegram} Telegram messages "
             f"({queued_notifications} notifications) for category {category.name}"
         )
-        return {"queued_emails": len(tasks), "notifications": queued_notifications, "queued_telegram": queued_telegram}
+        return {"queued_emails": queued_emails, "notifications": queued_notifications, "queued_telegram": queued_telegram}
 
     except Exception as exc:
         db.rollback()

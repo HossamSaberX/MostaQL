@@ -2,10 +2,12 @@
 Verify and unsubscribe endpoints
 """
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from loguru import logger
+from html import escape
+from typing import Optional
 import os
 
 from backend.database import get_db, User
@@ -13,6 +15,13 @@ from backend.utils.security import is_token_expired
 from backend.config import settings
 from backend.models import UnsubscribeRequest, PreferencesRequest, FollowedClientRequest
 from backend.services.email import send_unsubscribe_email
+from backend.services.messages import (
+    GENERIC_ERROR,
+    SERVICE_NAME,
+    email_unsubscribe_url,
+    manage_url,
+)
+from backend.utils.limiter import limiter
 from backend.services.client_tracking import (
     FollowedClientError,
     add_followed_client,
@@ -29,36 +38,32 @@ def get_frontend_url(path: str) -> str:
     return f"{settings.base_url}/{path}"
 
 
+# The same words whether or not the address is registered, so the form cannot be used
+# to find out who has an account.
+UNSUBSCRIBE_REQUEST_REPLY = "إذا كان البريد مسجلاً لدينا، أرسلنا إليه رابط إدارة الاشتراك."
+
+
 @router.post("/unsubscribe-request")
+@limiter.limit(f"{settings.rate_limit_per_hour}/hour")
 async def request_unsubscribe(
+    request: Request,
     data: UnsubscribeRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
-    Request an unsubscribe link via email
+    Mail a manage-or-unsubscribe link to a subscribed address. The reply never says
+    whether the address exists.
     """
     try:
         user = db.query(User).filter(User.email == data.email).first()
-
-        if not user:
-            raise HTTPException(status_code=404, detail="البريد غير مسجل لدينا")
-
-        if user.unsubscribed:
-            raise HTTPException(status_code=400, detail="البريد غير مشترك حالياً")
-
-        background_tasks.add_task(send_unsubscribe_email, user.email, user.token)
-
-        return JSONResponse(
-            content={"message": "تم إرسال رابط إلغاء الاشتراك إلى بريدك الإلكتروني."}
-        )
-
-    except HTTPException as exc:
-        logger.warning(f"Unsubscribe request rejected for {data.email}: {exc.detail}")
-        raise exc
+        if user and not user.unsubscribed:
+            background_tasks.add_task(send_unsubscribe_email, user.email, user.token)
     except Exception as e:
-        logger.error(f"Unsubscribe request error for {data.email}: {e}")
-        raise HTTPException(status_code=500, detail="خطأ داخلي، حاول لاحقاً")
+        logger.error(f"Unsubscribe request error: {e}")
+        raise HTTPException(status_code=500, detail=GENERIC_ERROR)
+
+    return JSONResponse(content={"message": UNSUBSCRIBE_REQUEST_REPLY})
 
 
 @router.get("/verify/{token}")
@@ -317,3 +322,80 @@ async def unsubscribe_all(token: str, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail="حدث خطأ أثناء إلغاء الاشتراك")
 
+
+
+def _email_unsubscribe_page(heading: str, message: str, token: Optional[str] = None, confirm: bool = False) -> HTMLResponse:
+    """A small standalone page for the email footer link (no site template involved)."""
+    action = ""
+    if confirm and token:
+        action = (
+            f'<form method="post" action="{escape(email_unsubscribe_url(token), quote=True)}">'
+            '<input type="hidden" name="List-Unsubscribe" value="One-Click">'
+            '<button type="submit">إلغاء الاشتراك من البريد</button></form>'
+        )
+    elif token:
+        action = f'<p><a href="{escape(manage_url(token), quote=True)}">إدارة التنبيهات</a></p>'
+    return HTMLResponse(
+        f'''<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{escape(heading)} - {escape(SERVICE_NAME)}</title>
+<style>
+body{{margin:0;padding:24px;background:#f4f6f8;color:#1f2933;font-family:Tahoma,Arial,sans-serif;line-height:1.8}}
+main{{max-width:480px;margin:40px auto;padding:28px;background:#fff;border-radius:8px}}
+h1{{font-size:22px;margin:0 0 12px}}
+button{{padding:12px 24px;border:0;border-radius:6px;background:#0A6FA0;color:#fff;font:inherit;font-weight:bold;cursor:pointer}}
+a{{color:#0A6FA0}}
+</style></head>
+<body><main><h1>{escape(heading)}</h1><p>{escape(message)}</p>{action}</main></body></html>'''
+    )
+
+
+@router.get("/unsubscribe/{token}/email")
+async def email_unsubscribe_confirm(token: str, db: Session = Depends(get_db)):
+    """
+    The footer link of alert emails. Opening it changes nothing (link scanners open links);
+    the change happens when the button posts to the same address.
+    """
+    user = db.query(User).filter(User.token == token).first()
+    if not user:
+        return _email_unsubscribe_page("رابط غير صالح", "يبدو أن الرابط غير صحيح.")
+    return _email_unsubscribe_page(
+        "إلغاء الاشتراك من البريد",
+        "لن تصلك تنبيهات المشاريع على بريدك بعد الآن.",
+        token,
+        confirm=True,
+    )
+
+
+@router.post("/unsubscribe/{token}/email")
+async def unsubscribe_email_only(token: str, request: Request, db: Session = Depends(get_db)):
+    """
+    Stop alerts by email. This is the one-click address of the List-Unsubscribe header
+    (RFC 8058), so it needs no confirmation and can be repeated safely. When nothing else
+    is left to send to (Telegram not linked or off), the whole subscription is stopped.
+    """
+    user = db.query(User).filter(User.token == token).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="رابط غير صالح")
+
+    try:
+        user.receive_email = False
+        if not (user.telegram_chat_id and user.receive_telegram):
+            user.unsubscribed = True
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Email unsubscribe error for token {token[:10]}...: {e}")
+        raise HTTPException(status_code=500, detail=GENERIC_ERROR)
+
+    logger.info(f"User stopped email alerts: {user.email} (unsubscribed={user.unsubscribed})")
+    message = (
+        "تم إلغاء الاشتراك. لن تصلك رسائل بعد الآن."
+        if user.unsubscribed
+        else "تم إيقاف تنبيهات البريد. تنبيهات تيليجرام مستمرة."
+    )
+    if "text/html" in request.headers.get("accept", ""):
+        return _email_unsubscribe_page("تم الإلغاء", message, token)
+    return JSONResponse(content={"message": message, "unsubscribed": user.unsubscribed})

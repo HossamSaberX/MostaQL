@@ -13,6 +13,7 @@ from backend.services.subscription_service import (
     SubscriptionError,
 )
 from backend.services.email import send_verification_email
+from backend.services.messages import GENERIC_ERROR
 from backend.utils.limiter import limiter
 
 router = APIRouter()
@@ -48,7 +49,7 @@ async def subscribe(
     except Exception as exc:
         db.rollback()
         logger.error(f"Subscribe error for {data.email}: {exc}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail=GENERIC_ERROR)
 
     if result.send_verification and result.token:
         background_tasks.add_task(

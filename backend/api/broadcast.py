@@ -10,6 +10,7 @@ from backend.services.notification_queue import (
     TelegramTask
 )
 from backend.services.email import send_announcement
+from backend.services.messages import ANNOUNCEMENT_TITLE, UNAUTHORIZED, manage_button
 from backend.config import settings
 from backend.utils.logger import app_logger
 
@@ -29,8 +30,8 @@ def _enqueue_telegram_broadcast(user: User, message: str) -> None:
             notification_ids=[],
             user_ids=[user.id],
             chat_id=user.telegram_chat_id,
-            title="إعلان من خدمة تنبيهات مستقل",
-            content=escape(message)
+            texts=[f"<b>{ANNOUNCEMENT_TITLE}</b>\n\n{escape(message)}"],
+            buttons=[manage_button(user.token)],
         )
     )
 
@@ -42,7 +43,7 @@ def _enqueue_email_broadcast(user: User, message: str) -> None:
 @router.post("/broadcast")
 async def broadcast_message(data: BroadcastRequest, db: Session = Depends(get_db)):
     if data.admin_secret != settings.secret_key:
-        raise HTTPException(status_code=403, detail="Unauthorized")
+        raise HTTPException(status_code=403, detail=UNAUTHORIZED)
     
     sent_telegram = 0
     sent_emails = 0
@@ -60,12 +61,12 @@ async def broadcast_message(data: BroadcastRequest, db: Session = Depends(get_db
             sent_emails += 1
         
         if not telegram_user and not email_user:
-            raise HTTPException(404, "No users found with provided chat_id or email")
+            raise HTTPException(404, "لا يوجد مستخدم بهذا المعرّف أو البريد")
     
     elif data.chat_id:
         user = db.query(User).filter(User.telegram_chat_id == data.chat_id).first()
         if not user:
-            raise HTTPException(404, "User with chat_id not found")
+            raise HTTPException(404, "لا يوجد مستخدم بهذا المعرّف")
         
         if user.receive_telegram:
             _enqueue_telegram_broadcast(user, data.message)
@@ -74,7 +75,7 @@ async def broadcast_message(data: BroadcastRequest, db: Session = Depends(get_db
     elif data.email:
         user = db.query(User).filter(User.email == data.email).first()
         if not user:
-            raise HTTPException(404, "User not found")
+            raise HTTPException(404, "المستخدم غير موجود")
         
         if user.receive_email and user.verified:
             _enqueue_email_broadcast(user, data.message)
