@@ -5,6 +5,7 @@ import pytest
 
 from backend.models import SubscribeRequest
 from backend.services.email.templates import render_alert_email
+from backend.services.messages import MANAGE_ALERTS
 from backend.services.notifier import (
     _build_job_payload,
     _filter_jobs_for_user,
@@ -134,6 +135,8 @@ def test_notification_payload_and_email_explain_why_the_job_matched():
         assert "التواصلات الجارية" in part
         assert "تصنيف تتابعه: برمجة" in part
     assert "راجع المشروع وتقدّم الآن" in html
+    assert MANAGE_ALERTS in html
+    assert "/api/unsubscribe/tok" in html
 
     (telegram_html,) = render_telegram_alert([payload])
     assert "الميزانية" in telegram_html
