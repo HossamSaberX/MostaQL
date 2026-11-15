@@ -153,9 +153,10 @@ class SubscriptionService:
     def _handle_existing_user(
         self, user: User, category_ids: List[int], cleaned: Dict[str, Any]
     ) -> SubscriptionResult:
-        # Anyone can type any address, so a confirmed account is never changed from here: its
-        # owner gets a manage link by email instead, and the reply matches a new signup's.
-        if user.verified:
+        # Anyone can type any address, so an account already in use (confirmed, or receiving
+        # Telegram alerts) is never changed from here: its owner gets a manage link by email
+        # instead, and the reply matches a new signup's.
+        if user.verified or user.telegram_chat_id:
             return SubscriptionResult(user=user, message=CHECK_INBOX, send_manage_link=True)
 
         # Never confirmed: take the new choices and send a fresh confirmation link.

@@ -291,6 +291,23 @@ def test_a_confirmed_account_without_telegram_gets_no_link(client, world):
     assert response.json()["telegram_link"] is None
 
 
+def test_a_telegram_only_account_is_not_changed_either(client, world, bot_and_no_mail):
+    client.post("/api/subscribe", json={"email": "new@example.com", "category_ids": [2]})
+    user = world.query(User).filter_by(email="new@example.com").one()
+    user.telegram_chat_id = "555"
+    world.commit()
+    token = user.token
+
+    data = client.post("/api/subscribe", json={"email": "new@example.com", "category_ids": [3]}).json()
+
+    world.expire_all()
+    user = world.query(User).filter_by(email="new@example.com").one()
+    assert user.token == token
+    assert [c.category_id for c in user.categories] == [2]
+    assert data["telegram_link"] is None
+    assert bot_and_no_mail[-1] == ("manage", "new@example.com")
+
+
 def test_an_unconfirmed_account_gets_a_new_confirmation_link(client, world, bot_and_no_mail):
     client.post("/api/subscribe", json={"email": "new@example.com", "category_ids": [2]})
     first_token = world.query(User).filter_by(email="new@example.com").one().token
