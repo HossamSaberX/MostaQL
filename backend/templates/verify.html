@@ -1,74 +1,44 @@
 {% extends "base.html" %}
+{% from "_macros.html" import status_panel, telegram_button %}
+
+{% block referrer %}no-referrer{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
 
 {% block content %}
-<article class="card">
-    <div id="statusContent" role="alert" aria-live="polite"></div>
-    
-    <section id="telegramSection" style="display: none; margin-bottom: 24px;">
-        <a id="telegramBtn" href="#" target="_blank" rel="noopener noreferrer" class="btn-telegram">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M20.665 3.717L2.335 10.786C1.084 11.286 1.089 11.984 2.103 12.295L6.81 13.764L17.704 6.893C18.22 6.58 18.693 6.753 18.307 7.096L9.482 15.053V15.052L9.481 15.054L9.156 19.916C9.633 19.916 9.843 19.699 10.11 19.44L12.43 17.187L17.257 20.753C18.147 21.244 18.787 20.991 19.009 19.93L22.18 5.004C22.505 3.48 21.691 2.789 20.665 3.717Z" fill="white"/>
-            </svg>
-            تفعيل تنبيهات تيليجرام
-        </a>
-        <p class="input-hint helper-text" style="margin-top: 12px;">احصل على الإشعارات فوراً على جوالك</p>
-    </section>
-
-    <a class="helper-text" href="/">← العودة للصفحة الرئيسية</a>
-</article>
+{% set state = status or request.query_params.get("status") %}
+{% if state == "success" %}
+    {% call status_panel("success", "check", "تم تأكيد بريدك") %}
+        <p>ستصلك المشاريع الجديدة في التصنيفات التي اخترتها.</p>
+        {% if telegram_link %}
+            <p class="hint">اربط تيليجرام لتصلك التنبيهات على هاتفك أيضًا.</p>
+            {{ telegram_button(telegram_link) }}
+        {% elif manage_link %}
+            <a class="button button--primary" href="{{ manage_link }}">إدارة التنبيهات</a>
+        {% endif %}
+    {% endcall %}
+{% elif state == "already_verified" %}
+    {% call status_panel("success", "check", "بريدك مؤكد من قبل") %}
+        <p>لا حاجة لفعل شيء. التنبيهات تعمل.</p>
+        {% if telegram_link %}
+            {{ telegram_button(telegram_link) }}
+        {% elif manage_link %}
+            <a class="button button--primary" href="{{ manage_link }}">إدارة التنبيهات</a>
+        {% endif %}
+    {% endcall %}
+{% elif state == "expired" %}
+    {% call status_panel("warning", "clock", "انتهت صلاحية الرابط") %}
+        <p>روابط التأكيد تعمل لوقت محدود. اشترك بالبريد نفسه وسنرسل لك رابطًا جديدًا.</p>
+        <a class="button button--primary" href="/#subscribe">اطلب رابطًا جديدًا</a>
+    {% endcall %}
+{% elif state == "invalid" %}
+    {% call status_panel("error", "alert", "الرابط غير صالح") %}
+        <p>ربما نُسخ الرابط ناقصًا، أو وصلك بعده رابط أحدث. افتح آخر رسالة منا، أو اشترك من جديد.</p>
+        <a class="button button--primary" href="/#subscribe">اشترك من جديد</a>
+    {% endcall %}
+{% else %}
+    {% call status_panel("error", "alert", "تعذر تأكيد بريدك") %}
+        <p>حدث خطأ عندنا. افتح الرابط مرة أخرى بعد قليل.</p>
+        <a class="button button--primary" href="/">الصفحة الرئيسية</a>
+    {% endcall %}
+{% endif %}
 {% endblock %}
-
-{% block scripts %}
-<script>
-    const status = new URLSearchParams(window.location.search).get('status');
-    const token = new URLSearchParams(window.location.search).get('token');
-    const content = document.getElementById('statusContent');
-    const telegramSection = document.getElementById('telegramSection');
-    const telegramBtn = document.getElementById('telegramBtn');
-    
-    // Inject from backend
-    const botUsername = "{{ telegram_bot_username }}";
-
-    const config = {
-        success: {
-            icon: '✅',
-            title: 'تم التأكيد بنجاح',
-            message: 'شكراً لك! تم تأكيد بريدك الإلكتروني وستصل التنبيهات قريباً.'
-        },
-        already_verified: {
-            icon: '✓',
-            title: 'البريد مؤكد مسبقاً',
-            message: 'يمكنك العودة للخدمة أو تحديث تفضيلاتك في أي وقت.'
-        },
-        expired: {
-            icon: '⏰',
-            title: 'انتهت صلاحية الرابط',
-            message: 'يرجى إعادة الاشتراك للحصول على رابط جديد صالح لمدة 24 ساعة.'
-        },
-        invalid: {
-            icon: '❌',
-            title: 'رابط غير صالح',
-            message: 'يبدو أن الرابط غير صحيح أو تم استخدامه مسبقاً.'
-        },
-        error: {
-            icon: '⚠️',
-            title: 'حدث خطأ',
-            message: 'يرجى المحاولة لاحقاً أو إعادة الاشتراك.'
-        }
-    };
-
-    const view = config[status] || config.error;
-    content.innerHTML = `
-        <div class="status-icon">${view.icon}</div>
-        <h2 class="status-title">${view.title}</h2>
-        <p class="status-message">${view.message}</p>
-    `;
-
-    // Show Telegram button if verified and token exists
-    if ((status === 'success' || status === 'already_verified') && token && botUsername) {
-        telegramBtn.href = `https://t.me/${botUsername}?start=${token}`;
-        telegramSection.style.display = 'block';
-    }
-</script>
-{% endblock %}
-

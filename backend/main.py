@@ -142,7 +142,7 @@ async def landing_page(request: Request):
         {
             "request": request, 
             "title": SERVICE_NAME,
-            "telegram_bot_username": settings.telegram_bot_username
+            "max_categories": settings.max_categories_per_user,
         }
     )
 
@@ -154,8 +154,6 @@ async def verify_page(request: Request):
         {
             "request": request,
             "title": "تأكيد البريد الإلكتروني",
-            "page_wrapper_class": "status-wrapper",
-            "telegram_bot_username": settings.telegram_bot_username
         }
     )
 
@@ -167,7 +165,6 @@ async def unsubscribe_page(request: Request):
         {
             "request": request,
             "title": "إلغاء الاشتراك",
-            "page_wrapper_class": "status-wrapper"
         }
     )
 
@@ -176,7 +173,7 @@ async def unsubscribe_page(request: Request):
 async def unsubscribe_request_page(request: Request):
     return templates.TemplateResponse(
         "unsubscribe_request.html",
-        {"request": request, "title": "طلب إلغاء الاشتراك"}
+        {"request": request, "title": "إدارة اشتراكك"}
     )
 
 

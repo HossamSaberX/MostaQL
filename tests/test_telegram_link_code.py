@@ -16,11 +16,11 @@ def test_a_code_carries_the_user_id_and_is_safe_for_a_telegram_link():
     assert re.fullmatch(r"[A-Za-z0-9_-]+", code)
 
 
-def test_a_code_works_for_a_week_and_not_after():
+def test_a_code_works_for_a_day_and_not_after():
     code = make_telegram_link_code(7, now=NOW)
 
-    assert read_telegram_link_code(code, now=NOW + timedelta(days=6, hours=23)) == 7
-    assert read_telegram_link_code(code, now=NOW + timedelta(days=7, seconds=1)) is None
+    assert read_telegram_link_code(code, now=NOW + timedelta(hours=23, minutes=59)) == 7
+    assert read_telegram_link_code(code, now=NOW + timedelta(hours=24, seconds=1)) is None
 
 
 def test_a_changed_code_is_rejected():

@@ -1,45 +1,29 @@
 {% extends "base.html" %}
+{% from "_macros.html" import status_panel %}
+
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
 
 {% block content %}
-<article class="card">
-    <div id="statusContent" role="alert" aria-live="polite"></div>
-    <a class="helper-text" href="/">← العودة للصفحة الرئيسية</a>
-</article>
+{% set state = request.query_params.get("status") %}
+{% if state == "success" %}
+    {% call status_panel("success", "check", "تم إلغاء الاشتراك") %}
+        <p>لن تصلك تنبيهات جديدة. يمكنك الاشتراك مجددًا متى شئت.</p>
+        <a class="button button--primary" href="/#subscribe">اشترك من جديد</a>
+    {% endcall %}
+{% elif state == "already_unsubscribed" %}
+    {% call status_panel("success", "pause", "الاشتراك متوقف من قبل") %}
+        <p>لا يصل هذا البريد أي تنبيه حاليًا.</p>
+        <a class="button button--primary" href="/#subscribe">اشترك من جديد</a>
+    {% endcall %}
+{% elif state == "invalid" %}
+    {% call status_panel("error", "alert", "الرابط غير صالح") %}
+        <p>ربما نُسخ الرابط ناقصًا. اطلب رابطًا جديدًا يصل إلى بريدك.</p>
+        <a class="button button--primary" href="/unsubscribe-request.html">اطلب رابطًا جديدًا</a>
+    {% endcall %}
+{% else %}
+    {% call status_panel("error", "alert", "تعذر تنفيذ الطلب") %}
+        <p>اطلب رابطًا لإدارة اشتراكك، وسيصل إلى بريدك.</p>
+        <a class="button button--primary" href="/unsubscribe-request.html">اطلب الرابط</a>
+    {% endcall %}
+{% endif %}
 {% endblock %}
-
-{% block scripts %}
-<script>
-    const status = new URLSearchParams(window.location.search).get('status');
-    const content = document.getElementById('statusContent');
-    const statusMessages = {
-        success: {
-            icon: '✅',
-            title: 'تم إلغاء الاشتراك',
-            message: 'لن تصلك إشعارات جديدة. يمكنك العودة والاشتراك مجدداً في أي وقت.'
-        },
-        already_unsubscribed: {
-            icon: 'ℹ️',
-            title: 'تم الإلغاء مسبقاً',
-            message: 'لا يوجد اشتراك مفعّل لهذا البريد الإلكتروني.'
-        },
-        invalid: {
-            icon: '❌',
-            title: 'رابط غير صالح',
-            message: 'يبدو أن رابط إلغاء الاشتراك غير صحيح.'
-        },
-        error: {
-            icon: '⚠️',
-            title: 'حدث خطأ',
-            message: 'تعذر تنفيذ الطلب حالياً. يرجى المحاولة لاحقاً.'
-        }
-    };
-
-    const view = statusMessages[status] || statusMessages.error;
-    content.innerHTML = `
-        <div class="status-icon">${view.icon}</div>
-        <h2 class="status-title">${view.title}</h2>
-        <p class="status-message">${view.message}</p>
-    `;
-</script>
-{% endblock %}
-

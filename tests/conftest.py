@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend.api import verify, webhook
+from backend.api import subscribe, verify, webhook
 from backend.config import settings
 from backend.database import Base, get_db
 from backend.utils.limiter import limiter
@@ -43,10 +43,11 @@ def db_session():
 
 @pytest.fixture
 def client(db_session):
-    """The verify and webhook routers on a small app, backed by the test database."""
+    """The subscribe, verify and webhook routers on a small app, backed by the test database."""
     app = FastAPI()
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.include_router(subscribe.router, prefix="/api")
     app.include_router(verify.router, prefix="/api")
     app.include_router(webhook.router, prefix="/api")
     app.dependency_overrides[get_db] = lambda: db_session

@@ -11,7 +11,7 @@ from typing import Optional
 
 from backend.config import settings
 
-TELEGRAM_LINK_CODE_DAYS = 7
+TELEGRAM_LINK_CODE_HOURS = 24
 _TELEGRAM_LINK_PURPOSE = b"telegram-link:"  # keeps these signatures apart from any other use of the key
 
 
@@ -46,11 +46,11 @@ def make_telegram_link_code(user_id: int, now: Optional[datetime] = None) -> str
     """
     A signed code for the Telegram deep link: "<user id>_<expiry>_<signature>".
 
-    It proves only "this person may link a chat to this account" for a week. Unlike the
+    It proves only "this person may link a chat to this account" for a day. Unlike the
     account token it cannot read or change preferences, so a shared link is harmless.
     Characters are [0-9A-Za-z_-], well under Telegram's 64-character limit.
     """
-    expires = _epoch(now or datetime.utcnow()) + TELEGRAM_LINK_CODE_DAYS * 24 * 3600
+    expires = _epoch(now or datetime.utcnow()) + TELEGRAM_LINK_CODE_HOURS * 3600
     payload = f"{int(user_id)}_{expires}"
     return f"{payload}_{_link_signature(payload)}"
 

@@ -1,381 +1,107 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon, status_panel, telegram_button, channels_field, email_delivery_field, categories_field, smart_filters_field, form_status %}
+
+{% block referrer %}no-referrer{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
 
 {% block content %}
-<article class="card">
-    <header class="preferences-header">
-        <h1>إدارة التفضيلات</h1>
-        <div class="status-badge" id="statusBadge" style="display: none;" aria-live="polite">
-            <span id="statusText">جاري التحميل...</span>
-        </div>
+{% if error == "invalid" %}
+    {% call status_panel("error", "alert", "الرابط غير صالح") %}
+        <p>ربما نُسخ الرابط ناقصًا. اطلب رابطًا جديدًا يصل إلى بريدك.</p>
+        <a class="button button--primary" href="/unsubscribe-request.html">اطلب رابطًا جديدًا</a>
+    {% endcall %}
+{% elif error %}
+    {% call status_panel("error", "alert", "تعذر فتح الصفحة") %}
+        <p>حدث خطأ عندنا. حدّث الصفحة بعد قليل.</p>
+        <a class="button button--primary" href="">حدّث الصفحة</a>
+    {% endcall %}
+{% else %}
+<div class="panel prefs" id="prefs" data-token="{{ token }}">
+    <header class="prefs-head">
+        <h1>إدارة التنبيهات</h1>
+        <p class="hint"><bdi id="prefsEmail"></bdi></p>
     </header>
-    
-    <div id="statusMessage" class="alert success" role="alert" aria-live="polite"></div>
-    <div id="errorMessage" class="alert error" role="alert" aria-live="assertive"></div>
-    
-    <form id="preferencesForm" novalidate>
-        {{ notification_options(email_checked=False, telegram_checked=False) }}
-        
-        <button type="submit" class="primary-btn" id="saveBtn">
-            حفظ التفضيلات
-        </button>
-    </form>
 
-    <details class="followed-clients" open>
-        <summary>
-            <span>عملائي السابقون</span>
-            <span class="followed-clients-summary">تنبيه من أي تصنيف</span>
-        </summary>
-        <p class="input-hint helper-text">
-            أضف رابط ملف العميل الذي أنجزت له عملاً (يمكن نسخه من صفحة المشروع). ستصلك كل مشاريعه الجديدة فور ظهورها، حتى لو نشرها في تصنيف مختلف. إذا عرض مستقل رسالة 403 عند فتح الملف، لا تحذف المتابعة: التنبيه يعتمد على معرّف العميل الظاهر في صفحة المشروع ولا يحتاج فتح ملفه.
-        </p>
-        <form id="followedClientForm" class="followed-client-form" novalidate>
-            <label class="visually-hidden" for="followedClientUrl">رابط ملف العميل</label>
-            <input
-                type="url"
-                id="followedClientUrl"
-                placeholder="https://mostaql.com/u/اسم-العميل"
-                dir="ltr"
-                lang="en"
-                required
-                autocomplete="off"
-            >
-            <label class="visually-hidden" for="followedClientLabel">اسم اختياري للعميل</label>
-            <input
-                type="text"
-                id="followedClientLabel"
-                placeholder="اسم اختياري للعميل"
-                maxlength="120"
-            >
-            <button type="submit" class="secondary-btn" id="addFollowedClientBtn">إضافة عميل</button>
+    <p class="hint" role="status" id="prefsLoading">جارٍ تحميل إعداداتك…</p>
+    <p class="form-error" role="alert" id="prefsLoadError"></p>
+
+    <div id="prefsBody" hidden>
+        <section class="status-line" aria-label="حالة التنبيهات">
+            <p class="badge" id="statusBadge">
+                <span class="badge-icon" data-icon-on>{{ icon("check") }}</span>
+                <span class="badge-icon" data-icon-off hidden>{{ icon("pause") }}</span>
+                <span id="statusText"></span>
+            </p>
+            <p id="sentThisWeek"></p>
+            <button type="button" class="button button--primary" id="resumeButton" hidden>أعد تفعيل التنبيهات</button>
+            <p class="form-error" role="alert" id="resumeError"></p>
+        </section>
+
+        <form id="settingsForm" novalidate aria-label="إعدادات التنبيهات">
+            <section class="prefs-section" aria-labelledby="channelsHeading">
+                <h2 id="channelsHeading">طريقة الاستلام</h2>
+                {{ channels_field() }}
+                <div class="telegram-state">
+                    <p id="telegramLinked" hidden>{{ icon("check") }} تيليجرام مرتبط بحسابك.</p>
+                    <div id="telegramNotLinked" hidden>
+                        <p class="hint">لم تربط تيليجرام بعد. اربطه في خطوة واحدة.</p>
+                        {{ telegram_button(id="telegramLink") }}
+                    </div>
+                </div>
+                {{ email_delivery_field() }}
+            </section>
+
+            <section class="prefs-section" aria-labelledby="topicsHeading">
+                <h2 id="topicsHeading">ما يصلك</h2>
+                {{ categories_field(max_categories) }}
+                {{ smart_filters_field() }}
+            </section>
+
+            {{ form_status() }}
+            <button type="submit" class="button button--primary button--wide">احفظ التغييرات</button>
         </form>
-        <p id="followedClientError" class="input-hint error-text" role="alert"></p>
-        <ul id="followedClientsList" class="followed-clients-list" aria-live="polite"></ul>
-    </details>
-    
-    <button type="button" class="danger-btn unsubscribe-btn" id="unsubscribeAllBtn">
-        إلغاء الاشتراك من كل شيء
-    </button>
-    
-    <div class="back-link">
-        <a href="/" class="helper-text">← العودة للصفحة الرئيسية</a>
-    </div>
-</article>
 
-<div id="confirmModal" class="modal" style="display: none;">
-    <div class="modal-content">
-        <h3>تأكيد الإلغاء</h3>
-        <p>هل أنت متأكد من إلغاء الاشتراك من كل شيء؟</p>
-        <div class="modal-actions">
-            <button type="button" class="modal-btn-cancel" id="modalCancel">إلغاء</button>
-            <button type="button" class="modal-btn-confirm" id="modalConfirm">نعم، إلغاء الاشتراك</button>
-        </div>
+        <section class="prefs-section" aria-labelledby="clientsHeading">
+            <h2 id="clientsHeading">عملاؤك السابقون</h2>
+            <p class="hint">أضف رابط ملف عميل عملت معه، وستصلك كل مشاريعه الجديدة من أي تصنيف.</p>
+            <form id="clientForm" class="client-form" novalidate aria-labelledby="clientsHeading">
+                <div class="field">
+                    <label for="clientUrl">رابط ملف العميل</label>
+                    <input type="url" id="clientUrl" name="profile_url" required dir="ltr"
+                           placeholder="https://mostaql.com/u/username" autocomplete="off"
+                           autocapitalize="none" autocorrect="off" spellcheck="false" data-error="clientError">
+                    <p class="field-error" id="clientError" hidden></p>
+                </div>
+                <div class="field">
+                    <label for="clientLabel">اسم يذكّرك به (اختياري)</label>
+                    <input type="text" id="clientLabel" name="label" maxlength="120" autocomplete="off">
+                </div>
+                <button type="submit" class="button button--quiet">أضف العميل</button>
+            </form>
+            <ul class="client-list" id="clientList"></ul>
+            <p class="hint" id="clientEmpty" hidden>لم تضف عملاء بعد.</p>
+            <p class="visually-hidden" role="status" id="clientStatus"></p>
+        </section>
+
+        <section class="prefs-section" aria-labelledby="stopHeading" id="stopSection">
+            <h2 id="stopHeading">إيقاف التنبيهات</h2>
+            <p class="hint">توقف كل الرسائل على البريد وتيليجرام، وتبقى اختياراتك محفوظة.</p>
+            <button type="button" class="button button--danger" id="stopButton">ألغِ الاشتراك</button>
+        </section>
     </div>
 </div>
+
+<dialog id="stopDialog" aria-labelledby="stopTitle" closedby="any">
+    <h2 id="stopTitle">إلغاء الاشتراك من كل التنبيهات؟</h2>
+    <p>لن تصلك مشاريع على البريد أو تيليجرام. يمكنك إعادتها من هذه الصفحة.</p>
+    <form method="dialog" class="actions">
+        <button value="keep" class="button button--primary" autofocus>لا، أبقني مشتركًا</button>
+        <button value="stop" class="button button--danger">نعم، ألغِ الاشتراك</button>
+    </form>
+</dialog>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
-<script>
-    const API_BASE_URL = window.location.port === '5500' || window.location.port === '5501'
-        ? 'http://localhost:8000/api'
-        : `${window.location.origin}/api`;
-    
-    let token = '{{ token or "" }}';
-    if (!token) {
-        token = new URLSearchParams(window.location.search).get('token');
-    }
-    if (!token) {
-        const pathMatch = window.location.pathname.match(/\/unsubscribe\/([^\/]+)/);
-        if (pathMatch) {
-            token = pathMatch[1];
-        }
-    }
-    
-    const statusMessage = document.getElementById('statusMessage');
-    const errorMessage = document.getElementById('errorMessage');
-    const statusBadge = document.getElementById('statusBadge');
-    const statusText = document.getElementById('statusText');
-    const form = document.getElementById('preferencesForm');
-    const saveBtn = document.getElementById('saveBtn');
-    const unsubscribeAllBtn = document.getElementById('unsubscribeAllBtn');
-    const followedClientForm = document.getElementById('followedClientForm');
-    const followedClientUrl = document.getElementById('followedClientUrl');
-    const followedClientLabel = document.getElementById('followedClientLabel');
-    const addFollowedClientBtn = document.getElementById('addFollowedClientBtn');
-    const followedClientError = document.getElementById('followedClientError');
-    const followedClientsList = document.getElementById('followedClientsList');
-    
-    if (!token) {
-        showError('رابط غير صالح');
-        form.style.display = 'none';
-        unsubscribeAllBtn.style.display = 'none';
-    } else {
-        loadPreferences();
-    }
-    
-    async function loadPreferences() {
-        try {
-            const response = await fetch(`${API_BASE_URL}/preferences/${token}`);
-            if (!response.ok) {
-                throw new Error('Failed to load preferences');
-            }
-            
-            const data = await response.json();
-            
-            document.getElementById('receiveEmail').checked = data.receive_email;
-            document.getElementById('receiveTelegram').checked = data.receive_telegram;
-            if (data.min_hiring_rate !== null) {
-                document.getElementById('minHiringRate').value = data.min_hiring_rate;
-            }
-            document.getElementById('requireProjectsInProgress').checked = Boolean(data.require_projects_in_progress);
-            document.getElementById('requireOngoingCommunications').checked = Boolean(data.require_ongoing_communications);
-            document.getElementById('requireVerifiedClient').checked = Boolean(data.require_verified_client);
-            if (data.min_budget_usd !== null) {
-                document.getElementById('minBudgetUsd').value = data.min_budget_usd;
-            }
-            if (data.max_project_age_minutes !== null) {
-                document.getElementById('maxProjectAgeMinutes').value = data.max_project_age_minutes;
-            }
-            renderFollowedClients(data.followed_clients || []);
-            
-            if (data.unsubscribed) {
-                showError('أنت غير مشترك حالياً');
-                unsubscribeAllBtn.style.display = 'none';
-            }
-        } catch (err) {
-            showError('حدث خطأ أثناء تحميل التفضيلات');
-            console.error(err);
-        }
-    }
-
-    function renderFollowedClients(clients) {
-        followedClientsList.innerHTML = '';
-        if (!clients.length) {
-            const empty = document.createElement('li');
-            empty.className = 'input-hint helper-text';
-            empty.textContent = 'لم تتم إضافة عملاء سابقين بعد.';
-            followedClientsList.appendChild(empty);
-            return;
-        }
-
-        clients.forEach((client) => {
-            const item = document.createElement('li');
-            item.className = 'followed-client-item';
-            item.dataset.clientId = client.id;
-            item.dataset.client = JSON.stringify(client);
-
-            const link = document.createElement('a');
-            link.href = client.profile_url;
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
-            link.textContent = client.label || client.profile_url;
-
-            const removeBtn = document.createElement('button');
-            removeBtn.type = 'button';
-            removeBtn.className = 'remove-followed-client';
-            removeBtn.textContent = 'حذف';
-            removeBtn.addEventListener('click', () => removeFollowedClient(client.id));
-
-            item.append(link, removeBtn);
-            followedClientsList.appendChild(item);
-        });
-    }
-
-    function showFollowedClientError(message) {
-        followedClientError.textContent = message || '';
-        followedClientError.style.display = message ? 'block' : 'none';
-    }
-
-    followedClientForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        showFollowedClientError('');
-        addFollowedClientBtn.disabled = true;
-        addFollowedClientBtn.textContent = 'جاري الإضافة...';
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/preferences/clients`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    token,
-                    profile_url: followedClientUrl.value.trim(),
-                    label: followedClientLabel.value.trim() || null,
-                }),
-            });
-            const data = await response.json();
-            if (!response.ok) {
-                showFollowedClientError(data.detail || 'تعذر إضافة العميل');
-                return;
-            }
-
-            const current = Array.from(followedClientsList.querySelectorAll('[data-client-id]'));
-            const responseClient = data.client;
-            const clients = current.map((item) => JSON.parse(item.dataset.client)).filter(Boolean);
-            const existingIndex = clients.findIndex((client) => client.id === responseClient.id);
-            if (existingIndex >= 0) {
-                clients[existingIndex] = responseClient;
-            } else {
-                clients.push(responseClient);
-            }
-            renderFollowedClients(clients);
-            followedClientUrl.value = '';
-            followedClientLabel.value = '';
-        } catch (err) {
-            console.error(err);
-            showFollowedClientError('حدث خطأ في الاتصال');
-        } finally {
-            addFollowedClientBtn.disabled = false;
-            addFollowedClientBtn.textContent = 'إضافة عميل';
-        }
-    });
-
-    async function removeFollowedClient(clientId) {
-        showFollowedClientError('');
-        try {
-            const response = await fetch(
-                `${API_BASE_URL}/preferences/clients/${clientId}?token=${encodeURIComponent(token)}`,
-                { method: 'DELETE' },
-            );
-            const data = await response.json();
-            if (!response.ok) {
-                showFollowedClientError(data.detail || 'تعذر حذف العميل');
-                return;
-            }
-            const remaining = Array.from(followedClientsList.querySelectorAll('[data-client-id]'))
-                .map((item) => JSON.parse(item.dataset.client))
-                .filter((client) => client.id !== clientId);
-            renderFollowedClients(remaining);
-        } catch (err) {
-            console.error(err);
-            showFollowedClientError('حدث خطأ في الاتصال');
-        }
-    }
-    
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        const receiveEmail = document.getElementById('receiveEmail').checked;
-        const receiveTelegram = document.getElementById('receiveTelegram').checked;
-        const minHiringRateInput = document.getElementById('minHiringRate').value;
-        const minHiringRate = minHiringRateInput ? parseFloat(minHiringRateInput) : null;
-        const minBudgetInput = document.getElementById('minBudgetUsd').value;
-        const minBudgetUsd = minBudgetInput ? parseFloat(minBudgetInput) : null;
-        const maxProjectAgeInput = document.getElementById('maxProjectAgeMinutes').value;
-        const maxProjectAgeMinutes = maxProjectAgeInput ? parseInt(maxProjectAgeInput, 10) : null;
-        const requireProjectsInProgress = document.getElementById('requireProjectsInProgress').checked;
-        const requireOngoingCommunications = document.getElementById('requireOngoingCommunications').checked;
-        const requireVerifiedClient = document.getElementById('requireVerifiedClient').checked;
-        
-        if (!receiveEmail && !receiveTelegram) {
-            showError('يجب اختيار طريقة إشعار واحدة على الأقل');
-            return;
-        }
-        
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'جاري الحفظ...';
-        statusMessage.style.display = 'none';
-        errorMessage.style.display = 'none';
-        
-        try {
-            const response = await fetch(`${API_BASE_URL}/preferences`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    token,
-                    receive_email: receiveEmail,
-                    receive_telegram: receiveTelegram,
-                    min_hiring_rate: minHiringRate,
-                    require_projects_in_progress: requireProjectsInProgress,
-                    require_ongoing_communications: requireOngoingCommunications,
-                    min_budget_usd: minBudgetUsd,
-                    require_verified_client: requireVerifiedClient,
-                    max_project_age_minutes: maxProjectAgeMinutes
-                }),
-            });
-            
-            const data = await response.json();
-            
-            if (response.ok) {
-                showSuccess(data.message || 'تم حفظ التفضيلات بنجاح');
-            } else {
-                showError(data.detail || 'حدث خطأ أثناء حفظ التفضيلات');
-            }
-        } catch (err) {
-            console.error(err);
-            showError('حدث خطأ في الاتصال');
-        } finally {
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'حفظ التفضيلات';
-        }
-    });
-    
-    const confirmModal = document.getElementById('confirmModal');
-    const modalConfirm = document.getElementById('modalConfirm');
-    const modalCancel = document.getElementById('modalCancel');
-    
-    unsubscribeAllBtn.addEventListener('click', () => {
-        confirmModal.style.display = 'flex';
-    });
-    
-    modalCancel.addEventListener('click', () => {
-        confirmModal.style.display = 'none';
-    });
-    
-    modalConfirm.addEventListener('click', async () => {
-        confirmModal.style.display = 'none';
-        unsubscribeAllBtn.disabled = true;
-        unsubscribeAllBtn.textContent = 'جاري الإلغاء...';
-        
-        try {
-            const response = await fetch(`${API_BASE_URL}/unsubscribe/${token}`, {
-                method: 'POST',
-            });
-            
-            if (response.ok) {
-                statusBadge.className = 'status-badge inactive';
-                statusText.textContent = 'غير مشترك';
-                statusBadge.classList.add('show');
-                form.style.display = 'none';
-                unsubscribeAllBtn.style.display = 'none';
-                showSuccess('تم إلغاء الاشتراك بنجاح');
-            } else {
-                const data = await response.json();
-                showError(data.detail || 'حدث خطأ أثناء إلغاء الاشتراك');
-            }
-        } catch (err) {
-            console.error(err);
-            showError('حدث خطأ في الاتصال');
-        } finally {
-            unsubscribeAllBtn.disabled = false;
-            unsubscribeAllBtn.textContent = 'إلغاء الاشتراك من كل شيء';
-        }
-    });
-    
-    confirmModal.addEventListener('click', (e) => {
-        if (e.target === confirmModal) {
-            confirmModal.style.display = 'none';
-        }
-    });
-    
-    function showSuccess(message) {
-        statusMessage.textContent = message;
-        statusMessage.style.display = 'block';
-        statusMessage.classList.add('show');
-        errorMessage.style.display = 'none';
-    }
-    
-    function showError(message) {
-        errorMessage.textContent = message;
-        errorMessage.style.display = 'block';
-        errorMessage.classList.add('show');
-        statusMessage.style.display = 'none';
-    }
-    
-    function hideMessages() {
-        statusMessage.style.display = 'none';
-        errorMessage.style.display = 'none';
-    }
-</script>
+{% if not error %}<script type="module" src="/assets/preferences.js?v=5"></script>{% endif %}
 {% endblock %}
-

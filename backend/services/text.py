@@ -20,11 +20,16 @@ def normalize(text: str) -> str:
     return _DIACRITICS.sub("", text.lower()).translate(_LETTERS)
 
 
-def split_words(raw: Optional[str]) -> List[str]:
-    """The normalised words of a newline- or comma-separated list, without empty entries."""
+def split_entries(raw: Optional[str]) -> List[str]:
+    """The entries of a newline- or comma-separated list as typed, trimmed, without empty ones."""
     if not raw:
         return []
-    return [word for word in (normalize(part).strip() for part in _SEPARATORS.split(raw)) if word]
+    return [part.strip() for part in _SEPARATORS.split(raw) if part.strip()]
+
+
+def split_words(raw: Optional[str]) -> List[str]:
+    """The normalised words of a newline- or comma-separated list, without empty entries."""
+    return [word for word in (normalize(entry).strip() for entry in split_entries(raw)) if word]
 
 
 def passes_word_filters(title: str, include: Optional[str], exclude: Optional[str]) -> bool:
