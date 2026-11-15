@@ -26,6 +26,7 @@ from backend.services.subscription_service import (
     SubscriptionService,
     confirmation_expired,
     issue_telegram_link,
+    renew_token,
 )
 from backend.utils.limiter import limiter
 from backend.services.client_tracking import (
@@ -152,8 +153,13 @@ async def verify_email(token: str, request: Request, db: Session = Depends(get_d
             logger.warning(f"Verification failed: Expired token for {user.email}")
             status = "expired"
         else:
+            # Anyone could have signed this address up and linked their own Telegram chat, which
+            # also got the account token. Now that the inbox is proven, start clean: a new token
+            # (every earlier link and Telegram code stops working) and no chat from before.
+            context["relink_telegram"] = bool(user.telegram_chat_id)
             user.verified = True
-            user.telegram_link_nonce = None  # a Telegram link from before the inbox was proven stops working
+            user.telegram_chat_id = None
+            renew_token(user)
             db.commit()
             logger.info(f"User verified successfully: {user.email}")
             status = "success"
@@ -162,7 +168,7 @@ async def verify_email(token: str, request: Request, db: Session = Depends(get_d
             context["manage_link"] = manage_url(user.token)
             context["paused"] = bool(user.unsubscribed)
         # Only right after confirming: a link scanner reopening the email must not replace it.
-        if status == "success" and user.receive_telegram:
+        if status == "success" and (user.receive_telegram or context.get("relink_telegram")):
             context["telegram_link"] = _telegram_link(db, user)
     except Exception as e:
         logger.error(f"Verify error for token {token[:10]}...: {e}")

@@ -394,7 +394,36 @@ def test_an_unknown_confirmation_link_says_so(client, world):
     response = client.get("/api/verify/nope")
 
     assert response.status_code == 200
-    assert "الرابط غير صالح" in response.text
+    assert "الرابط استُخدم أو لم يعد صالحًا" in response.text
+    assert 'href="/unsubscribe-request.html"' in response.text
+
+
+def test_confirming_gives_the_account_a_new_token_and_no_relink_note(client, world):
+    world.add(User(id=2, email="new@example.com", token="fresh", verified=False, receive_telegram=False,
+                   token_issued_at=datetime.utcnow()))
+    world.commit()
+
+    page = client.get("/api/verify/fresh").text
+
+    world.expire_all()
+    user = world.get(User, 2)
+    assert user.token != "fresh"
+    assert f"/api/unsubscribe/{user.token}" in page
+    assert "/api/unsubscribe/fresh" not in page
+    assert "اربط تيليجرام من جديد" not in page
+    assert client.get("/api/preferences/fresh").status_code == 404
+    assert client.get(f"/api/preferences/{user.token}").status_code == 200
+
+
+def test_a_second_click_on_a_confirmation_link_says_it_was_used(client, world):
+    world.add(User(id=2, email="new@example.com", token="fresh", verified=False, token_issued_at=datetime.utcnow()))
+    world.commit()
+    client.get("/api/verify/fresh")
+
+    page = client.get("/api/verify/fresh").text
+
+    assert "الرابط استُخدم أو لم يعد صالحًا" in page
+    assert "تم تأكيد بريدك" not in page
 
 
 def test_confirming_closes_an_older_telegram_link_and_opens_a_new_one(client, world):

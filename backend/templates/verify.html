@@ -14,7 +14,11 @@
             <p>ستصلك المشاريع الجديدة في التصنيفات التي اخترتها.</p>
         {% endif %}
         {% if telegram_link %}
-            <p class="hint">اربط تيليجرام لتصلك التنبيهات على هاتفك أيضًا.</p>
+            {% if relink_telegram %}
+                <p class="hint">لحماية حسابك، اربط تيليجرام من جديد بالزر أدناه.</p>
+            {% else %}
+                <p class="hint">اربط تيليجرام لتصلك التنبيهات على هاتفك أيضًا.</p>
+            {% endif %}
             {{ telegram_button(telegram_link) }}
         {% elif manage_link %}
             <a class="button button--primary" href="{{ manage_link }}">إدارة التنبيهات</a>
@@ -39,9 +43,9 @@
         <a class="button button--primary" href="/#subscribe">اطلب رابطًا جديدًا</a>
     {% endcall %}
 {% elif state == "invalid" %}
-    {% call status_panel("error", "alert", "الرابط غير صالح") %}
-        <p>ربما نُسخ الرابط ناقصًا، أو وصلك بعده رابط أحدث. افتح آخر رسالة منا، أو اشترك من جديد.</p>
-        <a class="button button--primary" href="/#subscribe">اشترك من جديد</a>
+    {% call status_panel("error", "alert", "الرابط استُخدم أو لم يعد صالحًا") %}
+        <p>إن كنت أكدت بريدك بهذا الرابط من قبل فلا حاجة لفعل شيء، فرابط إدارة التنبيهات يصلك مع رسائلنا. ويمكنك أن تطلبه ببريدك، أو أن <a href="/#subscribe">تشترك من جديد</a>.</p>
+        <a class="button button--primary" href="/unsubscribe-request.html">اطلب رابط إدارة التنبيهات</a>
     {% endcall %}
 {% else %}
     {% call status_panel("error", "alert", "تعذر تأكيد بريدك") %}

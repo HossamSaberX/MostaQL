@@ -578,6 +578,43 @@ def test_a_signup_code_dies_when_the_inbox_owner_confirms(client, bot, db_sessio
     assert user.token not in bot[-1][1] and bot[-1][2] is None
 
 
+def test_a_chat_linked_before_confirmation_is_unlinked_when_the_owner_confirms(client, bot, db_session, monkeypatch):
+    # Someone signs up an address they do not own and links their own chat, which gets the
+    # manage button with the account token. When the inbox owner confirms, all of it must go.
+    monkeypatch.setattr(settings, "telegram_bot_username", "alerts_bot")
+    mails = []
+    monkeypatch.setattr(subscribe, "send_verification_email", lambda email, token: mails.append(token))
+    db_session.add(Category(id=1, name="برمجة", mostaql_url="https://mostaql.com/projects"))
+    db_session.commit()
+    body = {"email": "victim@example.com", "category_ids": [1]}
+
+    link = client.post("/api/subscribe", json=body).json()["telegram_link"]
+    stolen = link.split("start=", 1)[1]
+    start(client, stolen, chat_id=666)
+    db_session.expire_all()
+    old_token = db_session.query(User).filter_by(email="victim@example.com").one().token
+    assert old_token == mails[-1]
+    assert chat_of(db_session, 1) == "666"
+
+    page = client.get(f"/api/verify/{mails[-1]}").text
+
+    db_session.expire_all()
+    user = db_session.query(User).filter_by(email="victim@example.com").one()
+    assert user.verified is True and user.telegram_chat_id is None
+    assert user.token != old_token
+    assert client.get(f"/api/preferences/{old_token}").status_code == 404
+    assert "لحماية حسابك، اربط تيليجرام من جديد بالزر أدناه." in page
+    assert f"/api/unsubscribe/{old_token}" not in page
+    fresh = page.split('href="https://t.me/alerts_bot?start=', 1)[1].split('"', 1)[0]
+
+    start(client, stolen, chat_id=666)
+    assert chat_of(db_session, 1) is None
+    assert "الرمز غير صحيح" in bot[-1][1]
+
+    start(client, fresh, chat_id=42)
+    assert chat_of(db_session, 1) == "42"
+
+
 def test_a_chat_linked_to_another_account_is_not_stolen(client, bot, db_session, open_link):
     db_session.add_all(
         [
